@@ -374,8 +374,17 @@ function Install-Updater([string]$serverOrigin) {
   $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
   Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Description 'Installs newer FieldLink Kiosk builds from the FieldLink server (nightly and after boot).' -Force | Out-Null
-  [ordered]@{ installed = $true; taskName = $TaskName; installedAt = (Get-Date).ToString('o'); server = $serverOrigin } | ConvertTo-Json | Set-Content -Path $UpdaterMark -Encoding UTF8
-  Step 'Automatic updates scheduled' 'ok' 'nightly at 03:15 and 3 min after boot, as SYSTEM'
+  # Let any signed-in account (the kiosk account in particular) START the task
+  # on demand from the app's Updates panel - it still runs as SYSTEM and only
+  # ever executes the helper copy in the admin-only folder.
+  try {
+    $svc = New-Object -ComObject 'Schedule.Service'; $svc.Connect()
+    $task = $svc.GetFolder('\').GetTask($TaskName)
+    $task.SetSecurityDescriptor('D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;AU)(A;;FRFX;;;BU)', 0)
+    Write-Log 'Update task: users may read and start it'
+  } catch { Write-Log "Could not open the update task to users: $_" 'warn' }
+  [ordered]@{ installed = $true; taskName = $TaskName; installedAt = (Get-Date).ToString('o'); server = $serverOrigin; usersMayRun = $true } | ConvertTo-Json | Set-Content -Path $UpdaterMark -Encoding UTF8
+  Step 'Automatic updates scheduled' 'ok' 'nightly at 03:15 and 3 min after boot, as SYSTEM; can also be started from the app'
 }
 
 function Remove-Updater {

@@ -786,7 +786,58 @@ async function installUpdateNative() {
   }
 }
 
-ipcMain.handle('kiosk:install-update', () => installUpdateNative());
+const UPDATE_TASK = 'FieldLinkKiosk Update';
+
+// Start the SYSTEM update task and follow its progress through the result
+// file it writes. Used from the kiosk account, which cannot pass a UAC prompt.
+async function installUpdateViaTask() {
+  setUpdateState({ phase: 'checking', percent: 0, message: 'Checking for a newer build…', error: null, startedAt: Date.now() });
+  const u = await checkUpdate();
+  if (u.error) { setUpdateState({ phase: 'failed', message: `Could not check ${u.server}: ${u.error}`, error: u.error }); return { ok: false, error: u.error }; }
+  if (!u.newer) { setUpdateState({ phase: 'done', percent: 100, message: `Already up to date (FieldLinkKiosk ${APP_VERSION}).` }); return { ok: true, upToDate: true }; }
+  adminActionStartedAt = Date.now();
+  log(`update: starting scheduled task "${UPDATE_TASK}" for ${u.latest}`);
+  const started = await new Promise(resolve => {
+    execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'schtasks.exe'), ['/Run', '/TN', UPDATE_TASK], { windowsHide: true, timeout: 30000 },
+      (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || '') + String(stderr || '') + (err ? ' ' + err.message : '') }));
+  });
+  if (!started.ok) {
+    const msg = /access is denied|denied/i.test(started.out) ? 'This account is not allowed to start the update task. Sign in as an administrator, or wait for tonight\'s automatic update.' : `Could not start the update task: ${started.out.trim().slice(0, 200)}`;
+    setUpdateState({ phase: 'failed', message: msg, error: msg });
+    return { ok: false, error: msg };
+  }
+  setUpdateState({ phase: 'installing', percent: 0, message: `Update task started. Downloading and installing FieldLinkKiosk ${u.latest}; the display restarts when it is done.` });
+  // Follow last-action.json written by the task (readable by every account).
+  const deadline = Date.now() + 15 * 60 * 1000;
+  const tick = () => {
+    if (Date.now() > deadline) { setUpdateState({ phase: 'failed', message: 'The update task did not report back within 15 minutes.', error: 'timeout' }); return; }
+    const r = readAdminResult();
+    if (r && !r.stale && r.action === 'Update') {
+      if (r.running) setUpdateState({ phase: 'installing', message: r.message || 'Working…' });
+      else if (r.ok) { setUpdateState({ phase: 'done', percent: 100, message: r.message || 'Updated.' }); return; }
+      else { setUpdateState({ phase: 'failed', message: r.message || 'Update failed.', error: r.message }); return; }
+    }
+    setTimeout(tick, 2000);
+  };
+  setTimeout(tick, 2000);
+  return { ok: true, viaTask: true };
+}
+
+async function installUpdate() {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows only.' };
+  if (updateState && ['checking', 'downloading', 'verifying', 'installing'].includes(updateState.phase)) return { ok: false, error: 'An update is already in progress.' };
+  let st = null;
+  try { st = await adminStatus(); } catch {}
+  const taskAvailable = !!(st && st.updater && st.updater.installed);
+  const kioskSession = !!(st && st.isKioskSession);
+  // The kiosk account cannot elevate, so it goes through the SYSTEM task;
+  // everyone else downloads and installs directly (one UAC prompt).
+  if (kioskSession && taskAvailable) return installUpdateViaTask();
+  if (kioskSession && !taskAvailable) return { ok: false, error: 'Updates from the kiosk account need kiosk mode (which installs the update task). Sign in as an administrator to update.' };
+  return installUpdateNative();
+}
+
+ipcMain.handle('kiosk:install-update', () => installUpdate());
 ipcMain.handle('kiosk:update-state', () => updateState);
 
 ipcMain.handle('kiosk:pair-request', async (_e, { server } = {}) => { await startPairRequest(server); return stateForPage(); });

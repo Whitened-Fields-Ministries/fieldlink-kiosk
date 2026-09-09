@@ -451,7 +451,11 @@
   $('check-btn').addEventListener('click', async () => { $('check-btn').disabled = true; say('update-msg', 'Checking…'); await refreshUpdate(); say('update-msg', ''); $('check-btn').disabled = false; });
   $('install-btn').addEventListener('click', async () => {
     if (!bridge) return;
-    if (!window.confirm('Install the update now?\n\nThe app downloads the new build, then Windows asks for administrator permission. The app closes for about a minute while it installs and opens again by itself.')) return;
+    const kioskSession = !!(admin && admin.isKioskSession);
+    const text = kioskSession
+      ? 'Install the update now?\n\nThe update runs in the background and the display restarts by itself when it is done (about a minute).'
+      : 'Install the update now?\n\nThe app downloads the new build, then Windows asks for administrator permission. The app closes for about a minute while it installs and opens again by itself.';
+    if (!window.confirm(text)) return;
     setBusy(true);
     say('update-msg', 'Starting…');
     const r = await bridge.installUpdate();
