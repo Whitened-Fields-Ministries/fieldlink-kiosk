@@ -15,14 +15,15 @@
   body {
     background: radial-gradient(1200px 700px at 70% -10%, #17223a 0%, var(--bg) 60%);
     color: var(--text); font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    display: flex; align-items: center; justify-content: center; padding: 32px; cursor: default; user-select: none;
+    display: flex; align-items: center; justify-content: center; padding: 28px; cursor: default; user-select: none; overflow: auto;
   }
-  .wrap { width: min(980px, 100%); display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 22px; }
-  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } }
+  .wrap { width: min(1080px, 100%); display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 22px; align-items: start; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 26px 28px; box-shadow: 0 30px 80px rgba(0,0,0,0.45); }
   .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); font-size: 0.85rem; letter-spacing: 0.04em; text-transform: uppercase; }
   .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 18px var(--gold); }
-  h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 10px; font-weight: 700; }
+  h1 { font-size: 1.65rem; line-height: 1.2; margin: 0 0 10px; font-weight: 700; }
+  h2 { font-size: 0.82rem; margin: 0 0 8px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.06em; }
   p { margin: 0 0 12px; color: var(--muted); }
   p strong, li strong { color: var(--text); font-weight: 600; }
   .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; border: 1px solid var(--border); background: var(--panel2); margin-bottom: 14px; }
@@ -36,30 +37,38 @@
   code { font: 0.88em ui-monospace, Menlo, Consolas, monospace; color: var(--gold); }
   .field { margin: 14px 0 0; }
   label { display: block; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
-  input[type=text] {
-    width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: #0b1220; color: var(--text);
-    font: inherit; outline: none; user-select: text;
-  }
+  input[type=text] { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: #0b1220; color: var(--text); font: inherit; outline: none; user-select: text; }
   input[type=text]:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
-  input.code { font: 700 2.1rem/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.18em; text-align: center; text-transform: uppercase; }
+  input.code { font: 700 1.7rem/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.16em; text-align: center; text-transform: uppercase; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-  button {
-    font: inherit; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); cursor: pointer;
-  }
+  button { font: inherit; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); cursor: pointer; }
   button.primary { background: var(--gold); color: #1a1405; border-color: var(--gold); }
-  button.primary:disabled { opacity: 0.55; cursor: progress; }
-  button.link { background: none; border: none; color: var(--muted); padding: 6px 4px; text-decoration: underline; text-underline-offset: 3px; }
+  button.danger { border-color: rgba(248,113,113,0.4); color: var(--bad); }
+  button:disabled { opacity: 0.55; cursor: progress; }
+  button.link { background: none; border: none; color: var(--muted); padding: 4px; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
   .msg { margin-top: 10px; font-size: 0.92rem; min-height: 1.4em; }
   .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); } .msg.warn { color: var(--warn); }
   details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
   summary { cursor: pointer; color: var(--text); font-weight: 600; }
-  .meta { font-size: 0.78rem; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin-top: 16px; }
+  .meta { font-size: 0.76rem; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin-top: 16px; }
   .meta b { color: var(--text); font-weight: 600; white-space: nowrap; }
   .meta span { word-break: break-all; user-select: text; }
   .hidden { display: none !important; }
-  .side h2 { font-size: 0.95rem; margin: 0 0 8px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.06em; }
   .side .block + .block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
   .countdown { font-variant-numeric: tabular-nums; }
+  .pairbox { background: var(--panel2); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; text-align: center; margin-top: 8px; }
+  .bigcode { font: 800 3.4rem/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.22em; color: var(--gold); margin: 6px 0 4px; user-select: all; }
+  .bigcode.dim { color: var(--muted); font-size: 2rem; letter-spacing: 0.1em; }
+  .sub { font-size: 0.82rem; color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; border: 1px solid var(--border); background: var(--panel2); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: rgba(74,222,128,0.35); } .pill.warn { color: var(--warn); border-color: rgba(251,191,36,0.35); } .pill.bad { color: var(--bad); border-color: rgba(248,113,113,0.35); }
+  ol.progress { list-style: none; padding: 0; margin: 10px 0 0; font-size: 0.84rem; }
+  ol.progress li { padding: 3px 0 3px 22px; position: relative; color: var(--muted); }
+  ol.progress li::before { content: '•'; position: absolute; left: 6px; color: var(--muted); }
+  ol.progress li.ok::before { content: '✓'; color: var(--ok); }
+  ol.progress li.warn::before { content: '!'; color: var(--warn); }
+  ol.progress li.failed { color: var(--bad); } ol.progress li.failed::before { content: '✕'; color: var(--bad); }
+  .small { font-size: 0.82rem; }
 </style>
 </head>
 <body>
@@ -68,7 +77,6 @@
     <div class="brand"><span class="dot"></span> FieldLink Missions · Kiosk</div>
     <div id="status" class="status"><span class="led"></span><span id="status-text">Checking…</span></div>
 
-    <!-- Headline + explanation change with the reason -->
     <div id="r-invalid-key" class="reason hidden">
       <h1>This kiosk's key is no longer valid</h1>
       <p>The key this display uses was <strong>deleted, disabled or replaced</strong> in FieldLink Admin. Nothing is wrong with this PC or its network — it just needs to be linked to a key again.</p>
@@ -84,42 +92,59 @@
     </div>
     <div id="r-no-config" class="reason hidden">
       <h1>Link this display to FieldLink</h1>
-      <p>The kiosk app is installed but has not been told which church display it is yet. Enter a pairing code from FieldLink Admin below, or re-run <code>INSTALL.bat</code> from a setup package.</p>
+      <p>The kiosk app is installed. To show your church's map it needs to be linked to a display key in FieldLink Admin — that takes about a minute and needs no keyboard here.</p>
     </div>
     <div id="r-manual" class="reason hidden">
       <h1>Kiosk settings</h1>
       <p>Opened with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd>. Press it again or choose <strong>Back to kiosk</strong> to return to the map.</p>
     </div>
 
-    <!-- Pairing -->
-    <div id="pair-box">
-      <div class="field">
-        <label for="code">Pairing code from FieldLink Admin</label>
-        <input id="code" class="code" type="text" maxlength="9" placeholder="ABCD-EFGH" autocomplete="off" spellcheck="false" inputmode="text">
+    <!-- Primary: code shown here, typed into FieldLink Admin -->
+    <div id="pair-display">
+      <div class="pairbox">
+        <label style="margin-bottom:0">Enter this code in FieldLink Admin → Kiosk → 🔗 Link kiosk</label>
+        <div id="pair-code" class="bigcode dim">· · · · · ·</div>
+        <div id="pair-sub" class="sub">Requesting a code…</div>
+        <div class="row" style="justify-content:center;margin-top:8px">
+          <button id="pair-new" class="link">Get a new code</button>
+        </div>
       </div>
       <div id="server-field" class="field hidden">
         <label for="server">FieldLink server</label>
-        <input id="server" type="text" placeholder="https://fieldlinkmissions.com" autocomplete="off" spellcheck="false">
+        <div style="display:flex;gap:8px">
+          <input id="server" type="text" placeholder="https://fieldlinkmissions.com" autocomplete="off" spellcheck="false" style="flex:1">
+          <button id="server-btn">Use this server</button>
+        </div>
+        <div class="sub" style="margin-top:6px">Only change this if your church uses a different FieldLink address.</div>
       </div>
-      <div class="row">
-        <button id="pair-btn" class="primary">Link this kiosk</button>
-        <button id="retry-btn">Retry now</button>
-        <button id="back-btn" class="hidden">Back to kiosk</button>
-        <span id="next-check" class="countdown" style="color:var(--muted);font-size:0.82rem"></span>
-      </div>
-      <div id="pair-msg" class="msg"></div>
     </div>
 
-    <details id="advanced">
-      <summary>Other ways to fix this</summary>
+    <div class="row">
+      <button id="retry-btn">Retry now</button>
+      <button id="back-btn" class="hidden">Back to kiosk</button>
+      <span id="next-check" class="countdown sub"></span>
+    </div>
+    <div id="pair-msg" class="msg"></div>
+
+    <details id="alt">
+      <summary>Have a code from FieldLink Admin, or a kiosk URL?</summary>
       <div class="field">
-        <label for="url">Paste the full kiosk URL or key</label>
-        <input id="url" type="text" placeholder="https://fieldlinkmissions.com/kiosk?key=fl_kiosk_…" autocomplete="off" spellcheck="false">
-        <div class="row"><button id="url-btn">Use this URL</button></div>
+        <label for="code">Code generated in FieldLink Admin (type it here)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="code" class="code" type="text" maxlength="9" placeholder="ABCD-EFGH" autocomplete="off" spellcheck="false" style="flex:1">
+          <button id="pair-btn" class="primary">Link</button>
+        </div>
+        <div id="code-msg" class="msg"></div>
+      </div>
+      <div class="field">
+        <label for="url">Kiosk URL or key (from ⚙ Settings → Copy URL)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="url" type="text" placeholder="https://fieldlinkmissions.com/kiosk?key=fl_kiosk_…" autocomplete="off" spellcheck="false" style="flex:1">
+          <button id="url-btn">Use</button>
+        </div>
         <div id="url-msg" class="msg"></div>
       </div>
-      <p style="margin-top:14px"><strong>Re-run the installer.</strong> In FieldLink Admin → Kiosk → ⚙ Settings on the display → <em>Download setup package</em>. Copy the ZIP to this PC, sign in as an administrator (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Del</kbd> → Switch user), extract it and double-click <code>INSTALL.bat</code>. It is safe to run any number of times: it updates the app, applies the new key and repairs the lockdown.</p>
-      <p><strong>Keyboard:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> this screen · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> reload · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> quit the app</p>
+      <p class="small" style="margin-top:12px"><strong>Keyboard:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> this screen · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> reload · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> quit · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Del</kbd> → Switch user for the administrator account.</p>
     </details>
 
     <div class="meta">
@@ -136,22 +161,38 @@
 
   <div class="card side">
     <div class="block">
-      <h2>How to get a pairing code</h2>
+      <h2>How to link this display</h2>
       <ol class="steps">
-        <li>On any computer or phone, sign in to <strong>FieldLink Admin</strong>.</li>
-        <li>Open <strong>Kiosk</strong> in the left menu.</li>
-        <li>Next to the key for this display click <strong>🔗 Link kiosk</strong>. If the key was deleted, create a new key first with <strong>+ Generate Key</strong>.</li>
-        <li>Type the 8-character code shown there into the box on the left and press <strong>Link this kiosk</strong>.</li>
+        <li>On your phone or computer, sign in to <strong>FieldLink Admin</strong> and open <strong>Kiosk</strong>.</li>
+        <li>Click <strong>🔗 Link kiosk</strong> next to the key for this display. No key yet? <strong>+ Generate Key</strong> first.</li>
+        <li>Type the code shown on the left and confirm.</li>
+        <li>The map appears here within a few seconds.</li>
       </ol>
-      <p style="margin-top:10px;font-size:0.85rem">Codes work once and expire after 15 minutes. Only Super Admins can create them.</p>
+      <p class="small" style="margin-top:8px">Codes change every 15 minutes on their own. Only Super Admins can link displays.</p>
     </div>
-    <div class="block">
-      <h2>Need a keyboard?</h2>
-      <p style="font-size:0.9rem">Plug any USB keyboard into the kiosk PC. Touch screens also work for the buttons; typing needs a keyboard.</p>
+
+    <div class="block" id="admin-block">
+      <h2>Kiosk mode <span id="admin-pill" class="pill">checking…</span></h2>
+      <p id="admin-text" class="small">Checking this PC…</p>
+      <div class="row" style="margin-top:6px">
+        <button id="lock-btn" class="primary hidden">Turn this PC into a kiosk</button>
+        <button id="unlock-btn" class="danger hidden">Remove kiosk mode</button>
+        <button id="restart-btn" class="hidden">Restart now</button>
+      </div>
+      <ol id="admin-steps" class="progress"></ol>
+      <div id="admin-msg" class="msg"></div>
+      <p class="small" id="admin-hint" style="margin-top:8px">Creates a <strong>FieldLinkKiosk</strong> Windows account (random password, managed for you) that boots straight into this app with no desktop, disables sleep, and turns on automatic updates. Windows asks for administrator permission once. Undo any time from here.</p>
     </div>
-    <div class="block">
-      <h2>Administrator access</h2>
-      <p style="font-size:0.9rem">Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Del</kbd> → <strong>Switch user</strong> and sign in with your own Windows account. The kiosk account has no desktop by design.</p>
+
+    <div class="block" id="update-block">
+      <h2>Updates <span id="update-pill" class="pill">—</span></h2>
+      <p id="update-text" class="small">—</p>
+      <div class="row" style="margin-top:6px">
+        <button id="check-btn">Check now</button>
+        <button id="install-btn" class="primary hidden">Install update</button>
+      </div>
+      <div id="update-msg" class="msg"></div>
+      <p id="auto-text" class="small"></p>
     </div>
   </div>
 </div>
@@ -161,19 +202,34 @@
   const $ = id => document.getElementById(id);
   const bridge = window.kiosk;
   let state = null;
+  let admin = null;          // last adminStatus()
   let tick = null;
+  let resultPoll = null;
+  let actionRunning = null;  // action name while an elevated action is in flight
+
+  function fmtTime(ts) { return ts ? new Date(ts).toLocaleTimeString() : '—'; }
+  function mmss(secs) { return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'); }
+  function say(id, text, cls) { const el = $(id); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+  function setPill(id, text, cls) { const el = $(id); el.textContent = text; el.className = 'pill' + (cls ? ' ' + cls : ''); }
 
   function setReason(reason) {
     document.querySelectorAll('.reason').forEach(el => el.classList.toggle('hidden', el.id !== 'r-' + reason));
-    const auto = reason === 'offline' || reason === 'server';
-    // Auto-recovering states keep the pairing box available but de-emphasised.
-    $('advanced').open = reason === 'manual' || reason === 'no-config';
+    const pairing = reason === 'invalid-key' || reason === 'no-config' || reason === 'manual';
+    $('pair-display').classList.toggle('hidden', !pairing);
     $('server-field').classList.toggle('hidden', !(reason === 'no-config' || reason === 'manual'));
+    $('alt').open = false;
     $('back-btn').classList.toggle('hidden', !(state && state.hasConfig && (reason === 'manual' || reason === 'invalid-key')));
-    if (!auto) setTimeout(() => $('code').focus(), 50);
   }
 
-  function fmtTime(ts) { return ts ? new Date(ts).toLocaleTimeString() : '—'; }
+  function renderPair(p) {
+    const codeEl = $('pair-code'), sub = $('pair-sub');
+    if (!p) { codeEl.textContent = '· · · · · ·'; codeEl.className = 'bigcode dim'; sub.textContent = 'Requesting a code…'; return; }
+    if (p.status === 'requesting') { codeEl.textContent = '· · · · · ·'; codeEl.className = 'bigcode dim'; sub.textContent = 'Requesting a code from ' + (p.origin || 'FieldLink') + '…'; return; }
+    if (p.status === 'error') { codeEl.textContent = '—'; codeEl.className = 'bigcode dim'; sub.textContent = p.error || 'Could not get a code.'; return; }
+    codeEl.textContent = p.code; codeEl.className = 'bigcode';
+    const secs = Math.max(0, Math.round((p.expiresAt - Date.now()) / 1000));
+    sub.innerHTML = 'Waiting for FieldLink Admin… <span class="countdown">code renews in ' + mmss(secs) + '</span>' + (p.origin && p.origin !== 'https://fieldlinkmissions.com' ? ' · server ' + p.origin : '');
+  }
 
   function render(s) {
     state = s;
@@ -183,7 +239,7 @@
     st.classList.remove('ok', 'bad', 'warn');
     let text = 'Checking…';
     if (lc) {
-      if (lc.status === 'ok')      { st.classList.add('ok');   text = 'Connected to FieldLink'; }
+      if (lc.status === 'ok')           { st.classList.add('ok');   text = 'Connected to FieldLink'; }
       else if (lc.status === 'invalid') { st.classList.add('bad');  text = 'Key rejected by server' + (lc.http ? ' (HTTP ' + lc.http + ')' : ''); }
       else if (lc.status === 'server')  { st.classList.add('warn'); text = 'Server error' + (lc.http ? ' (HTTP ' + lc.http + ')' : ''); $('server-http').textContent = 'HTTP ' + (lc.http || '5xx'); }
       else if (lc.status === 'offline') { st.classList.add('warn'); text = 'No connection — ' + (lc.error || 'network unreachable'); }
@@ -191,43 +247,116 @@
     $('status-text').textContent = text;
 
     $('m-name').textContent   = s.keyName || (s.hasConfig ? '(unknown — server not reached yet)' : 'not linked');
-    $('m-server').textContent = s.server || s.defaultServer || '—';
+    $('m-server').textContent = s.server || (s.pair && s.pair.origin) || s.defaultServer || '—';
     $('m-key').textContent    = s.keyPrefix || '—';
     $('m-check').textContent  = lc ? fmtTime(lc.at) + (s.lastGoodAt ? ' · last OK ' + fmtTime(s.lastGoodAt) : '') : '—';
     $('m-config').textContent = s.configSource || ('none yet — will be created at ' + (s.configTargets && s.configTargets[0]));
     $('m-log').textContent    = s.logPath || '—';
     $('m-host').textContent   = s.hostname || '—';
     $('m-app').textContent    = 'FieldLinkKiosk ' + (s.appVersion || '?') + ' · Electron ' + (s.electron || '?');
-    if (!$('server').value) $('server').value = s.server || s.defaultServer || '';
+    if (!$('server').value) $('server').value = s.server || (s.pair && s.pair.origin) || s.defaultServer || '';
+    renderPair(s.pair);
 
     if (tick) clearInterval(tick);
     tick = setInterval(() => {
       const el = $('next-check');
-      if (!state || !state.nextCheckAt) { el.textContent = ''; return; }
-      const secs = Math.max(0, Math.round((state.nextCheckAt - Date.now()) / 1000));
-      el.textContent = secs > 0 ? 'Next automatic check in ' + secs + 's' : 'Checking…';
-    }, 500);
+      if (state && state.nextCheckAt) {
+        const secs = Math.max(0, Math.round((state.nextCheckAt - Date.now()) / 1000));
+        el.textContent = secs > 0 ? 'Next automatic check in ' + secs + 's' : 'Checking…';
+      } else el.textContent = '';
+      if (state && state.pair && state.pair.status === 'waiting') renderPair(state.pair);
+    }, 1000);
   }
 
-  function say(id, text, cls) { const el = $(id); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+  // ── Kiosk mode / updates (privileged helper) ─────────────────────────────
+  function renderAdmin(a) {
+    admin = a;
+    const lock = $('lock-btn'), unlock = $('unlock-btn'), restart = $('restart-btn');
+    lock.classList.add('hidden'); unlock.classList.add('hidden');
+    if (!a || a.unsupported) { setPill('admin-pill', 'n/a', ''); $('admin-text').textContent = (a && a.reason) || 'Not available here.'; $('admin-hint').classList.add('hidden'); return; }
+    if (a.error) { setPill('admin-pill', 'unknown', 'warn'); $('admin-text').textContent = 'Could not read this PC\'s kiosk status: ' + a.error; lock.classList.remove('hidden'); return; }
+    if (a.lockedDown) {
+      setPill('admin-pill', 'on', 'ok');
+      $('admin-text').textContent = 'This PC boots straight into the kiosk as the FieldLinkKiosk account.' + (a.isKioskSession ? ' You are in that session now.' : '');
+      unlock.classList.remove('hidden');
+    } else {
+      setPill('admin-pill', 'off', 'warn');
+      $('admin-text').textContent = a.accountExists ? 'The FieldLinkKiosk account exists but auto-login is not set up — this PC shows the Windows desktop at boot.' : 'Not set up — this PC still shows the Windows desktop at boot and someone has to start the app.';
+      lock.classList.remove('hidden');
+    }
+    // updates
+    const u = a.updater || {}, us = a.updateStatus || null;
+    $('auto-text').textContent = u.installed
+      ? 'Automatic updates: on (nightly at 03:15 and after boot' + (u.lastRun ? '; last run ' + new Date(u.lastRun).toLocaleString() + (us && us.result ? ', ' + us.result : '') : '') + ').'
+      : 'Automatic updates: off — turned on together with kiosk mode.';
+  }
 
-  // Format the code as ABCD-EFGH while typing.
+  function renderUpdate(u) {
+    if (!u) return;
+    const install = $('install-btn');
+    if (u.error) { setPill('update-pill', 'unknown', 'warn'); $('update-text').textContent = 'Installed ' + u.installed + ' · could not check ' + (u.server || '') + ' (' + u.error + ')'; install.classList.add('hidden'); return; }
+    if (u.newer) { setPill('update-pill', u.latest + ' available', 'warn'); $('update-text').textContent = 'Installed ' + u.installed + ' · FieldLinkKiosk ' + u.latest + ' is available' + (u.published_at ? ' (published ' + new Date(u.published_at).toLocaleDateString() + ')' : '') + '. Installing closes and reopens the app; Windows asks for administrator permission.'; install.classList.remove('hidden'); }
+    else { setPill('update-pill', 'up to date', 'ok'); $('update-text').textContent = 'Installed ' + u.installed + (u.latest ? ' · latest ' + u.latest : '') + '.'; install.classList.add('hidden'); }
+  }
+
+  function renderResult(r) {
+    const list = $('admin-steps'); list.innerHTML = '';
+    if (!r || r.stale) return;
+    (r.steps || []).forEach(s => { const li = document.createElement('li'); li.className = s.state || ''; li.textContent = s.label + (s.detail ? ' — ' + s.detail : ''); list.appendChild(li); });
+    const target = (r.action === 'Update') ? 'update-msg' : 'admin-msg';
+    say(target, r.message || '', r.running ? '' : (r.ok ? 'ok' : 'bad'));
+    $('restart-btn').classList.toggle('hidden', !(r.ok && r.needsRestart && !r.running));
+  }
+
+  async function refreshAdmin() { if (!bridge) return; renderAdmin(await bridge.adminStatus()); }
+  async function refreshUpdate() { if (!bridge) return; renderUpdate(await bridge.checkUpdate()); }
+
+  function watchResult(action) {
+    actionRunning = action;
+    if (resultPoll) clearInterval(resultPoll);
+    let quiet = 0;
+    resultPoll = setInterval(async () => {
+      const r = await bridge.adminResult();
+      if (!r || r.stale) { quiet++; if (quiet > 120) { clearInterval(resultPoll); setBusy(false); say('admin-msg', 'No response from the helper — was the administrator prompt accepted?', 'warn'); } return; }
+      renderResult(r);
+      if (!r.running) { clearInterval(resultPoll); resultPoll = null; actionRunning = null; setBusy(false); refreshAdmin(); if (action === 'Update') refreshUpdate(); }
+    }, 1500);
+  }
+  function setBusy(b) { ['lock-btn', 'unlock-btn', 'install-btn', 'check-btn'].forEach(id => { $(id).disabled = b; }); }
+
+  async function runAdmin(action, confirmText) {
+    if (!bridge) return;
+    if (confirmText && !window.confirm(confirmText)) return;
+    setBusy(true);
+    $('admin-steps').innerHTML = '';
+    say(action === 'Update' ? 'update-msg' : 'admin-msg', 'Waiting for administrator permission…');
+    const r = await bridge.adminRun(action);
+    if (!r.ok) { setBusy(false); say(action === 'Update' ? 'update-msg' : 'admin-msg', r.error || 'Could not start.', 'bad'); return; }
+    say(action === 'Update' ? 'update-msg' : 'admin-msg', 'Working…');
+    watchResult(action);
+  }
+
+  // ── wiring ───────────────────────────────────────────────────────────────
   $('code').addEventListener('input', e => {
     const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     e.target.value = raw.length > 4 ? raw.slice(0, 4) + '-' + raw.slice(4) : raw;
   });
   $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('pair-btn').click(); });
   $('url').addEventListener('keydown', e => { if (e.key === 'Enter') $('url-btn').click(); });
+  $('server').addEventListener('keydown', e => { if (e.key === 'Enter') $('server-btn').click(); });
+
+  $('pair-new').addEventListener('click', async () => { if (bridge) render(await bridge.pairRequest($('server').value)); });
+  $('server-btn').addEventListener('click', async () => { if (bridge) render(await bridge.pairRequest($('server').value)); });
 
   $('pair-btn').addEventListener('click', async () => {
     if (!bridge) return;
     const code = $('code').value;
-    if (code.replace(/[^A-Z0-9]/gi, '').length !== 8) { say('pair-msg', 'Type all 8 characters of the code.', 'warn'); $('code').focus(); return; }
-    $('pair-btn').disabled = true; say('pair-msg', 'Checking code with the server…');
+    if (code.replace(/[^A-Z0-9]/gi, '').length !== 8) { say('code-msg', 'Type all 8 characters of the code.', 'warn'); $('code').focus(); return; }
+    $('pair-btn').disabled = true; say('code-msg', 'Checking code with the server…');
     try {
       const r = await bridge.pair(code, $('server').value);
-      if (r.ok) say('pair-msg', 'Linked as "' + (r.name || 'kiosk') + '" — loading the map…', 'ok');
-      else { say('pair-msg', r.error || 'That did not work.', 'bad'); $('code').select(); }
+      if (r.ok) say('code-msg', 'Linked as "' + (r.name || 'kiosk') + '" — loading the map…', 'ok');
+      else { say('code-msg', r.error || 'That did not work.', 'bad'); $('code').select(); }
     } finally { $('pair-btn').disabled = false; }
   });
 
@@ -249,14 +378,25 @@
   });
 
   $('back-btn').addEventListener('click', () => bridge && bridge.back());
+  $('lock-btn').addEventListener('click', () => runAdmin('Lockdown', 'Turn this PC into a dedicated kiosk?\n\nA FieldLinkKiosk Windows account is created and signed in automatically at every boot, showing only this app. You keep your own account: Ctrl+Alt+Del → Switch user. You can undo this from the same screen.'));
+  $('unlock-btn').addEventListener('click', () => runAdmin('Unlock', 'Remove kiosk mode from this PC?\n\nAuto-login and the locked shell are removed and automatic updates are turned off. The FieldLinkKiosk account is disabled, not deleted.'));
+  $('restart-btn').addEventListener('click', () => { if (bridge && window.confirm('Restart this PC now?')) bridge.restart(); });
+  $('check-btn').addEventListener('click', async () => { $('check-btn').disabled = true; say('update-msg', 'Checking…'); await refreshUpdate(); say('update-msg', ''); $('check-btn').disabled = false; });
+  $('install-btn').addEventListener('click', () => runAdmin('Update', 'Install the update now?\n\nThe app closes for about a minute while the new build installs, then opens again by itself.'));
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && state && state.hasConfig && state.reason === 'manual') bridge && bridge.back(); });
 
   if (bridge) {
     bridge.onState(render);
     bridge.getState().then(render);
+    refreshAdmin();
+    refreshUpdate();
+    // An action may still be running from before this page was (re)opened.
+    bridge.adminResult().then(r => { if (r && !r.stale) { renderResult(r); if (r.running) watchResult(r.action); } });
   } else {
     // Opened outside the app (e.g. in a browser while developing).
-    render({ reason: new URLSearchParams(location.search).get('reason') || 'manual', hasConfig: false, defaultServer: 'https://fieldlinkmissions.com', configTargets: ['(not running inside the kiosk app)'] });
+    render({ reason: new URLSearchParams(location.search).get('reason') || 'no-config', hasConfig: false, defaultServer: 'https://fieldlinkmissions.com', configTargets: ['(not running inside the kiosk app)'], pair: { status: 'waiting', code: 'K7M-3PX', expiresAt: Date.now() + 14 * 60 * 1000, origin: 'https://fieldlinkmissions.com' } });
+    renderAdmin({ lockedDown: false, accountExists: false, updater: { installed: false } });
+    renderUpdate({ installed: '1.2.0', latest: '1.2.0', newer: false });
   }
 })();
 </script>

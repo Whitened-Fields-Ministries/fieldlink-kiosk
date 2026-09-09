@@ -25,6 +25,7 @@ const { app, BrowserWindow, globalShortcut, ipcMain, net, powerSaveBlocker } = r
 const path = require('path');
 const fs   = require('fs');
 const os   = require('os');
+const { execFile } = require('child_process');
 
 const APP_VERSION        = app.getVersion();
 const DEFAULT_SERVER     = 'https://fieldlinkmissions.com';
@@ -217,6 +218,9 @@ function stateForPage() {
     lastGoodAt,
     nextCheckAt,
     defaultServer: DEFAULT_SERVER,
+    pair:          pair ? { code: pair.code, expiresAt: pair.expiresAt, origin: pair.origin, status: pair.status, error: pair.error } : null,
+    platform:      process.platform,
+    adminActionStartedAt,
   };
 }
 
@@ -242,6 +246,7 @@ function showKiosk() {
   view = 'kiosk';
   recoveryReason = null;
   pageFailed = false;
+  stopPairRequest();
   log(`view: kiosk → ${maskUrl(kioskUrl)}`);
   win.loadURL(kioskUrl, { userAgent: userAgent() });
 }
@@ -251,6 +256,7 @@ function showRecovery(reason) {
   if (view === 'recovery') {
     // Never re-navigate while the admin may be typing — just update the reason.
     if (recoveryReason !== reason) { recoveryReason = reason; log(`view: recovery reason → ${reason}`); }
+    maybeStartPairing(reason);
     pushState();
     return;
   }
@@ -258,6 +264,15 @@ function showRecovery(reason) {
   recoveryReason = reason;
   log(`view: recovery (${reason})`);
   win.loadFile(path.join(__dirname, 'recovery.html'), { query: { reason } });
+  maybeStartPairing(reason);
+}
+
+// On-screen pairing makes sense whenever the display needs (or may want) a new
+// key — not while we are merely offline.
+function maybeStartPairing(reason) {
+  if (!['invalid-key', 'no-config', 'manual'].includes(reason)) return;
+  if (pair && pair.status !== 'error') return;
+  startPairRequest();
 }
 
 function maskUrl(u) {
@@ -437,6 +452,190 @@ ipcMain.handle('kiosk:back', () => {
 
 ipcMain.handle('kiosk:quit', () => { app.quit(); });
 
+// ── Kiosk-displayed pairing code ─────────────────────────────────────────────
+// The setup/recovery screen asks the server for a short code and shows it; the
+// admin types it into FieldLink Admin → Kiosk → 🔗 Link kiosk. We poll with the
+// secret token until the admin has claimed the code, then save the URL the
+// server hands back. No keyboard needed at the display.
+const PAIR_POLL_MS = 3000;
+let pair = null; // { origin, code, token, expiresAt, status: requesting|waiting|error, error, timer }
+
+function stopPairRequest() {
+  if (pair && pair.timer) clearTimeout(pair.timer);
+  pair = null;
+}
+
+async function startPairRequest(serverText) {
+  stopPairRequest();
+  let origin;
+  try {
+    const current = kioskUrl ? parseKioskUrl(kioskUrl) : null;
+    origin = normaliseOrigin(serverText || (current && current.origin) || DEFAULT_SERVER);
+  } catch (e) {
+    pair = { status: 'error', error: e.message || String(e), origin: null, code: null, token: null, expiresAt: null, timer: null };
+    pushState();
+    return;
+  }
+  const mine = { origin, status: 'requesting', code: null, token: null, expiresAt: null, error: null, timer: null };
+  pair = mine;
+  pushState();
+  try {
+    const r = await fetchJson(`${origin}/api/kiosk/pair/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostname: os.hostname(), app_version: APP_VERSION }),
+    });
+    if (pair !== mine) return; // superseded by a newer request
+    if (!r.ok || !r.body || !r.body.code || !r.body.token) {
+      mine.status = 'error';
+      mine.error = (r.body && r.body.error) || (r.status === 404
+        ? 'This FieldLink server does not support on-screen pairing yet. Ask for a code in FieldLink Admin and type it below instead.'
+        : `Server answered HTTP ${r.status}.`);
+      log(`pair-request: failed ${r.status} ${mine.error}`);
+      pushState();
+      return;
+    }
+    mine.code = r.body.code;
+    mine.token = r.body.token;
+    mine.expiresAt = Date.parse(r.body.expires_at) || (Date.now() + 15 * 60 * 1000);
+    mine.status = 'waiting';
+    log(`pair-request: showing code ${mine.code} for ${origin}`);
+    pushState();
+    mine.timer = setTimeout(pollPairRequest, PAIR_POLL_MS);
+  } catch (e) {
+    if (pair !== mine) return;
+    mine.status = 'error';
+    mine.error = `Cannot reach ${origin} (${e && e.message ? e.message : e}).`;
+    pushState();
+  }
+}
+
+async function pollPairRequest() {
+  if (!pair || pair.status !== 'waiting' || view !== 'recovery') return;
+  const p = pair;
+  try {
+    const r = await fetchJson(`${p.origin}/api/kiosk/pair/poll`, { headers: { 'x-pair-token': p.token } });
+    if (pair !== p) return;
+    if (r.ok && r.body && r.body.status === 'linked' && r.body.url) {
+      const parsed = parseKioskUrl(r.body.url);
+      if (parsed && parsed.key) {
+        const saved = saveConfig({ kioskUrl: parsed.url });
+        keyInfo = r.body.key || null; kioskUrl = parsed.url; configSource = saved; invalidStreak = 0;
+        log(`pair-request: linked as "${(r.body.key && r.body.key.name) || '?'}" — saved to ${saved}`);
+        stopPairRequest();
+        showKiosk();
+        scheduleCheck(5000);
+        return;
+      }
+    }
+    const expired = r.status === 404 || r.status === 410 || (r.body && r.body.status === 'expired') || Date.now() > p.expiresAt;
+    if (expired) {
+      log('pair-request: code expired — requesting a new one');
+      startPairRequest(p.origin);
+      return;
+    }
+  } catch (e) { /* offline — keep polling */ }
+  if (pair === p) p.timer = setTimeout(pollPairRequest, PAIR_POLL_MS);
+}
+
+// ── Privileged helper (resources/kiosk-admin.ps1) ────────────────────────────
+// Everything that needs administrator rights (kiosk lockdown, undo, updates)
+// runs through one PowerShell script shipped with the app. Elevation goes
+// through a normal UAC prompt; progress and results come back via
+// %ProgramData%\FieldLinkKiosk-Admin\last-action.json.
+let adminActionStartedAt = 0;
+
+function adminScriptPath() {
+  return app.isPackaged ? path.join(process.resourcesPath, 'kiosk-admin.ps1') : path.join(__dirname, 'resources', 'kiosk-admin.ps1');
+}
+function adminDir() {
+  const pd = process.env.ProgramData || process.env.PROGRAMDATA || process.env.ALLUSERSPROFILE;
+  return pd ? path.join(pd, 'FieldLinkKiosk-Admin') : null;
+}
+function psExe() {
+  return path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+}
+function runPs(args, timeoutMs) {
+  return new Promise((resolve) => {
+    execFile(psExe(), ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', ...args],
+      { timeout: timeoutMs || 60000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
+        const extra = err && typeof err.code !== 'number' ? ` ${err.message}` : '';
+        resolve({ code, stdout: String(stdout || ''), stderr: String(stderr || '') + extra });
+      });
+  });
+}
+
+async function adminStatus() {
+  if (process.platform !== 'win32') return { unsupported: true, reason: 'Kiosk mode is only available on Windows.' };
+  const r = await runPs(['-File', adminScriptPath(), '-Action', 'Status', '-Exe', app.getPath('exe')], 90000);
+  const i = r.stdout.indexOf('{');
+  if (i < 0) return { error: (r.stderr || r.stdout || 'No status returned').trim().slice(0, 500) };
+  try { return JSON.parse(r.stdout.slice(i)); } catch (e) { return { error: 'Could not read status: ' + e.message }; }
+}
+
+function readAdminResult() {
+  const dir = adminDir();
+  if (!dir) return null;
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-action.json'), 'utf8'));
+    // Results written before the current action started belong to an earlier run.
+    j.stale = adminActionStartedAt > 0 && (Date.parse(j.updatedAt || 0) || 0) < adminActionStartedAt - 5000;
+    return j;
+  } catch { return null; }
+}
+
+async function adminRunElevated(action) {
+  const allowed = ['Lockdown', 'Unlock', 'Update', 'InstallUpdater', 'RemoveUpdater'];
+  if (!allowed.includes(action)) return { ok: false, error: 'Unknown action.' };
+  if (process.platform !== 'win32') return { ok: false, error: 'Kiosk mode is only available on Windows.' };
+  const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const inner = `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ${q(adminScriptPath())} -Action ${action} -Exe ${q(app.getPath('exe'))}${action === 'Update' ? ' -Relaunch' : ''}`;
+  const cmd = `Start-Process -FilePath '${psExe()}' -Verb RunAs -WindowStyle Hidden -ArgumentList '${inner.replace(/'/g, "''")}'`;
+  adminActionStartedAt = Date.now();
+  log(`admin: ${action} requested (UAC prompt)`);
+  const r = await runPs(['-Command', cmd], 120000);
+  if (r.code !== 0) {
+    const declined = /cancel/i.test(r.stderr) || /1223/.test(r.stderr);
+    log(`admin: ${action} not started: ${r.stderr.trim().slice(0, 300)}`);
+    return { ok: false, error: declined ? 'Administrator permission was declined.' : (r.stderr.trim().slice(0, 300) || 'Could not start the helper.') };
+  }
+  return { ok: true, startedAt: adminActionStartedAt };
+}
+
+function cmpVersion(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0); }
+  return 0;
+}
+
+async function checkUpdate() {
+  const p = kioskUrl ? parseKioskUrl(kioskUrl) : null;
+  const origin = (pair && pair.origin) || (p && p.origin) || DEFAULT_SERVER;
+  try {
+    const r = await fetchJson(`${origin}/api/kiosk/installer/version`);
+    if (!r.ok || !r.body) return { installed: APP_VERSION, server: origin, error: `HTTP ${r.status}` };
+    const latest = r.body.version || null;
+    return { installed: APP_VERSION, latest, newer: !!latest && cmpVersion(latest, APP_VERSION) > 0, size: r.body.size, published_at: r.body.published_at, server: origin };
+  } catch (e) {
+    return { installed: APP_VERSION, server: origin, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+ipcMain.handle('kiosk:pair-request', async (_e, { server } = {}) => { await startPairRequest(server); return stateForPage(); });
+ipcMain.handle('kiosk:admin-status', () => adminStatus());
+ipcMain.handle('kiosk:admin-run', (_e, { action } = {}) => adminRunElevated(action));
+ipcMain.handle('kiosk:admin-result', () => readAdminResult());
+ipcMain.handle('kiosk:check-update', () => checkUpdate());
+ipcMain.handle('kiosk:restart', () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows only.' };
+  log('restart requested from the settings screen');
+  execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'shutdown.exe'), ['/r', '/t', '5', '/c', 'FieldLink Kiosk: restarting to apply kiosk mode', '/d', 'p:4:1'], { windowsHide: true }, () => {});
+  return { ok: true };
+});
+
 // ── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   const { config } = loadConfig();
@@ -540,4 +739,4 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => { globalShortcut.unregisterAll(); if (checkTimer) clearTimeout(checkTimer); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); if (checkTimer) clearTimeout(checkTimer); stopPairRequest(); });
