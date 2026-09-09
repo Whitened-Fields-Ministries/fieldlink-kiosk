@@ -30,7 +30,7 @@ That's the whole setup. Later, the same Ctrl+Shift+K screen shows status, instal
 | `main.js` | Window, key health loop, recovery/setup screen state, on-screen pairing, bridge to the privileged helper, update check. |
 | `preload.js` | Exposes the privileged bridge only to the local `recovery.html`; remote pages get a read-only marker (`window.fieldlinkKioskApp`). |
 | `recovery.html` | The setup / recovery / settings screen (link code, kiosk mode, updates, status). Opens in a browser for layout work. |
-| `resources/kiosk-admin.ps1` | Everything that needs administrator rights. Shipped as `resources\kiosk-admin.ps1` next to the exe. |
+| `resources/kiosk-admin.ps1` | Everything that needs administrator rights. Shipped as `resources\kiosk-admin.ps1` next to the exe. ASCII + BOM, see below. |
 | `build/installer.nsh` | NSIS hook: a real uninstall runs `-Action Unlock` first so a PC is never left auto-logging into a shell that no longer exists. |
 
 ### Key health loop
@@ -66,7 +66,7 @@ Invoked by `main.js` through `Start-Process -Verb RunAs` (one UAC prompt). It re
 | `Status` | Read-only JSON: account, auto-login, profile, update task, last update, paths. No elevation. |
 | `Lockdown` | Creates/repairs the `FieldLinkKiosk` account with a **random password**, not an administrator, cannot change its password; creates its profile (UserEnv `CreateProfile`); sets its shell to the exe and disables Task Manager/Run/context menu in its hive; configures auto-login with the password stored in the **LSA `DefaultPassword` secret** (never `DefaultPassword` in the registry — the old blank-password approach broke on machines that refuse blank-password logons); disables sleep/screensaver; installs the update task; verifies. |
 | `Unlock` | Reverses all of that, removes the task, disables (does not delete) the account. |
-| `Update` | Reads the server from `update.json`, asks `/api/kiosk/installer/version`, downloads from `/api/kiosk/installer` if newer, verifies size and sha256, runs the installer silently. From the scheduled task it restarts the PC if the kiosk session was running (the app was its shell); from the app (`-Relaunch`) it relaunches the app de-elevated via `explorer.exe`. |
+| `Update` | Reads the server from `update.json`, asks `/api/kiosk/installer/version`, downloads from `/api/kiosk/installer` if newer, verifies size and sha256, runs the installer silently. Restarts the PC if the kiosk session was running (the app was its shell); with `-Relaunch` it relaunches the app de-elevated via `explorer.exe`. |
 | `InstallUpdater` / `RemoveUpdater` | Manage the scheduled task alone. |
 
 Two data folders, deliberately:
@@ -76,7 +76,28 @@ Two data folders, deliberately:
 | `%ProgramData%\FieldLinkKiosk` | kiosk account may **modify** | `config.json` (the kiosk URL) — so the kiosk account can re-link itself from the screen. |
 | `%ProgramData%\FieldLinkKiosk-Admin` | Administrators + SYSTEM full, Users read | copy of the helper the SYSTEM task runs, `update.json` (https server only), `admin.log`, `last-action.json`, `update-status.json`, downloads. Nothing the kiosk account can edit is ever executed or trusted by the updater. |
 
-The scheduled task **FieldLinkKiosk Update** runs as SYSTEM daily at 03:15 and 3 minutes after boot.
+The scheduled task **FieldLinkKiosk Update** runs as SYSTEM daily at 03:15 and 3 minutes after boot. It is
+registered with a security descriptor that lets any signed-in account *start* it (not edit it), and
+`updater.json` in the admin folder records that it exists, because a standard user cannot query a SYSTEM
+task. `Get-TaskInfo` falls back to that marker.
+
+How **Install update** on the screen works depends on who is signed in:
+
+| Session | Path |
+|---------|------|
+| Kiosk account (`isKioskSession`) | `schtasks /Run "FieldLinkKiosk Update"` — the SYSTEM task downloads, verifies, installs and restarts the display; the screen follows `last-action.json`. |
+| Anyone else | `installUpdateNative()` in `main.js` downloads the installer itself, checks size and sha256, then runs it silently after one UAC prompt via a tiny temp `.ps1` that also relaunches the app. No dependency on the helper. |
+
+**Lockdown / Unlock** are started with `Start-Process -Verb RunAs -Wait`, so the app knows exactly when
+they finish and with what exit code. The helper's output is appended (UTF-8) to
+`%TEMP%\FieldLinkKiosk-admin\<Action>-<timestamp>.log`, which the screen tails live under a progress bar;
+`last-action.json` supplies the step list and the final message. Both finish with a restart prompt.
+
+Helper rules learned the hard way: keep the file **pure ASCII with a UTF-8 BOM** (PowerShell 5.1 reads a
+BOM-less file as Windows-1252 and an em dash's last byte is a quote character); run native tools through
+`Run-Native` (a redirected stderr line is a terminating error under `$ErrorActionPreference = 'Stop'`);
+account descriptions are limited to 48 characters; `Test-Path` inside another user's profile throws for a
+non-elevated caller.
 
 ### Config resolution
 
@@ -121,8 +142,13 @@ GitHub release tagged **`latest`**, then `POST /api/kiosk/installer/invalidate` 
 cached copy is replaced immediately. Bump `version` in `package.json` with every behaviour change: the
 updater compares it, the screen shows it, and requests carry a `FieldLinkKiosk/<version>` user-agent suffix.
 
-Displays on 1.2+ in kiosk mode update themselves nightly. Displays on 1.0/1.1 must run the new installer once
-(the installer is safe to run over an existing install).
+Displays on 1.2+ in kiosk mode update themselves nightly, and anyone at the display can trigger it from the
+Updates panel. Displays on 1.0/1.1 must run the new installer once (safe over an existing install).
+Pushes that only touch `README.md` do not trigger a build.
+
+The installer is not code-signed yet, so SmartScreen shows "Windows protected your PC" on first run
+(More info → Run anyway). Signing needs a certificate issued to a person or a registered organisation;
+once one exists it is a few lines in `build.yml` and the electron-builder `win` config.
 
 ## Server side
 

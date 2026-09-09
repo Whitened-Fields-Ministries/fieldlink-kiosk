@@ -3,6 +3,9 @@ name: Build Kiosk Installer
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
   workflow_dispatch:
 
 permissions:
