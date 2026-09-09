@@ -256,6 +256,12 @@
     $('m-app').textContent    = 'FieldLinkKiosk ' + (s.appVersion || '?') + ' · Electron ' + (s.electron || '?');
     if (!$('server').value) $('server').value = s.server || (s.pair && s.pair.origin) || s.defaultServer || '';
     renderPair(s.pair);
+    if (s.updateState) {
+      const us = s.updateState;
+      const cls = us.phase === 'failed' ? 'bad' : us.phase === 'done' ? 'ok' : '';
+      say('update-msg', (us.message || '') + (us.phase === 'downloading' && us.percent ? ' (' + us.percent + '%)' : ''), cls);
+      if (us.phase === 'failed' || us.phase === 'done') setBusy(false);
+    }
 
     if (tick) clearInterval(tick);
     tick = setInterval(() => {
@@ -382,7 +388,15 @@
   $('unlock-btn').addEventListener('click', () => runAdmin('Unlock', 'Remove kiosk mode from this PC?\n\nAuto-login and the locked shell are removed and automatic updates are turned off. The FieldLinkKiosk account is disabled, not deleted.'));
   $('restart-btn').addEventListener('click', () => { if (bridge && window.confirm('Restart this PC now?')) bridge.restart(); });
   $('check-btn').addEventListener('click', async () => { $('check-btn').disabled = true; say('update-msg', 'Checking…'); await refreshUpdate(); say('update-msg', ''); $('check-btn').disabled = false; });
-  $('install-btn').addEventListener('click', () => runAdmin('Update', 'Install the update now?\n\nThe app closes for about a minute while the new build installs, then opens again by itself.'));
+  $('install-btn').addEventListener('click', async () => {
+    if (!bridge) return;
+    if (!window.confirm('Install the update now?\n\nThe app downloads the new build, then Windows asks for administrator permission. The app closes for about a minute while it installs and opens again by itself.')) return;
+    setBusy(true);
+    say('update-msg', 'Starting…');
+    const r = await bridge.installUpdate();
+    if (!r.ok) { setBusy(false); say('update-msg', r.error || 'Could not start the update.', 'bad'); }
+    else if (r.upToDate) { setBusy(false); say('update-msg', 'Already up to date.', 'ok'); refreshUpdate(); }
+  });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && state && state.hasConfig && state.reason === 'manual') bridge && bridge.back(); });
 
   if (bridge) {

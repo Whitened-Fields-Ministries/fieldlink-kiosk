@@ -221,6 +221,7 @@ function stateForPage() {
     pair:          pair ? { code: pair.code, expiresAt: pair.expiresAt, origin: pair.origin, status: pair.status, error: pair.error } : null,
     platform:      process.platform,
     adminActionStartedAt,
+    updateState,
   };
 }
 
@@ -618,11 +619,101 @@ async function checkUpdate() {
     const r = await fetchJson(`${origin}/api/kiosk/installer/version`);
     if (!r.ok || !r.body) return { installed: APP_VERSION, server: origin, error: `HTTP ${r.status}` };
     const latest = r.body.version || null;
-    return { installed: APP_VERSION, latest, newer: !!latest && cmpVersion(latest, APP_VERSION) > 0, size: r.body.size, published_at: r.body.published_at, server: origin };
+    return { installed: APP_VERSION, latest, newer: !!latest && cmpVersion(latest, APP_VERSION) > 0, size: r.body.size, sha256: r.body.sha256 || null, published_at: r.body.published_at, server: origin };
   } catch (e) {
     return { installed: APP_VERSION, server: origin, error: e && e.message ? e.message : String(e) };
   }
 }
+
+// ── In-app update (does not depend on the helper script) ─────────────────────
+// Download the installer ourselves, verify it, then ask Windows once (UAC) to
+// run it silently. The elevated command also relaunches the app afterwards,
+// because the installer closes the running app.
+let updateState = null; // { phase: checking|downloading|verifying|installing|done|failed, percent, message, error, startedAt }
+
+function setUpdateState(patch) {
+  updateState = { ...(updateState || {}), ...patch, updatedAt: Date.now() };
+  pushState();
+}
+
+async function installUpdateNative() {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows only.' };
+  if (updateState && ['checking', 'downloading', 'verifying', 'installing'].includes(updateState.phase)) return { ok: false, error: 'An update is already in progress.' };
+  setUpdateState({ phase: 'checking', percent: 0, message: 'Checking for a newer build…', error: null, startedAt: Date.now() });
+  try {
+    const u = await checkUpdate();
+    if (u.error) throw new Error(`Could not check ${u.server}: ${u.error}`);
+    if (!u.newer) { setUpdateState({ phase: 'done', percent: 100, message: `Already up to date (FieldLinkKiosk ${APP_VERSION}).` }); return { ok: true, upToDate: true }; }
+    const dir = path.join(app.getPath('temp'), 'FieldLinkKiosk-update');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `FieldLinkKiosk-Setup-${u.latest}.exe`);
+    try { fs.unlinkSync(file); } catch {}
+
+    setUpdateState({ phase: 'downloading', percent: 0, message: `Downloading FieldLinkKiosk ${u.latest}…` });
+    log(`update: downloading ${u.latest} from ${u.server}`);
+    const res = await net.fetch(`${u.server}/api/kiosk/installer`, { cache: 'no-store', headers: { 'User-Agent': `FieldLinkKiosk/${APP_VERSION}` } });
+    if (!res.ok || !res.body) throw new Error(`Server answered HTTP ${res.status} for the installer.`);
+    const total = Number(res.headers.get('content-length')) || u.size || 0;
+    const hash = require('crypto').createHash('sha256');
+    let received = 0;
+    await new Promise((resolve, reject) => {
+      const out = fs.createWriteStream(file);
+      const reader = res.body.getReader();
+      out.on('error', reject);
+      (async () => {
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            hash.update(value);
+            received += value.length;
+            if (!out.write(Buffer.from(value))) await new Promise(r => out.once('drain', r));
+            if (total) setUpdateState({ percent: Math.min(99, Math.round(received / total * 100)), message: `Downloading FieldLinkKiosk ${u.latest}… ${(received / 1048576).toFixed(0)} / ${(total / 1048576).toFixed(0)} MB` });
+          }
+          out.end(resolve);
+        } catch (e) { reject(e); }
+      })();
+    });
+
+    setUpdateState({ phase: 'verifying', percent: 100, message: 'Verifying download…' });
+    const size = fs.statSync(file).size;
+    if (u.size && Number(u.size) !== size) throw new Error(`Download is ${size} bytes, expected ${u.size}.`);
+    const digest = hash.digest('hex');
+    if (u.sha256 && u.sha256.toLowerCase() !== digest) throw new Error('Download checksum does not match the server.');
+    log(`update: downloaded ${size} bytes, sha256 ${digest.slice(0, 12)}… (server ${u.sha256 ? 'verified' : 'gave no checksum'})`);
+
+    setUpdateState({ phase: 'installing', message: `Installing FieldLinkKiosk ${u.latest}. Windows will ask for permission; the app closes and reopens by itself.` });
+    const exe = app.getPath('exe');
+    // The elevated part is a tiny script file (no nested quoting across the
+    // command line). It runs after the UAC prompt and survives this process
+    // being closed by the installer; explorer.exe relaunches the app de-elevated.
+    const runner = path.join(dir, 'run-update.ps1');
+    const ps1 = [
+      "$ErrorActionPreference = 'Continue'",
+      `Start-Process -FilePath '${file.replace(/'/g, "''")}' -ArgumentList '/S' -Wait`,
+      'Start-Sleep -Seconds 2',
+      `Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"' + '${exe.replace(/'/g, "''")}' + '"')`,
+      '',
+    ].join('\r\n');
+    fs.writeFileSync(runner, '\ufeff' + ps1, 'utf8');
+    const cmd = `Start-Process -FilePath '${psExe()}' -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${runner.replace(/'/g, "''")}"'`;
+    const r = await runPs(['-Command', cmd], 120000);
+    if (r.code !== 0) {
+      const declined = /cancel/i.test(r.stderr) || /1223/.test(r.stderr);
+      throw new Error(declined ? 'Administrator permission was declined.' : (r.stderr.trim().slice(0, 300) || 'Could not start the installer.'));
+    }
+    log(`update: installer ${u.latest} started elevated — expecting to be closed and relaunched`);
+    return { ok: true };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    log(`update: failed — ${msg}`);
+    setUpdateState({ phase: 'failed', message: `Update failed: ${msg}`, error: msg });
+    return { ok: false, error: msg };
+  }
+}
+
+ipcMain.handle('kiosk:install-update', () => installUpdateNative());
+ipcMain.handle('kiosk:update-state', () => updateState);
 
 ipcMain.handle('kiosk:pair-request', async (_e, { server } = {}) => { await startPairRequest(server); return stateForPage(); });
 ipcMain.handle('kiosk:admin-status', () => adminStatus());

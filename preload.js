@@ -26,6 +26,8 @@ if (window.location.protocol === 'file:') {
     adminRun:    (action)   => ipcRenderer.invoke('kiosk:admin-run', { action }),
     adminResult: ()         => ipcRenderer.invoke('kiosk:admin-result'),
     checkUpdate: ()         => ipcRenderer.invoke('kiosk:check-update'),
+    installUpdate: ()       => ipcRenderer.invoke('kiosk:install-update'),
+    updateState: ()         => ipcRenderer.invoke('kiosk:update-state'),
     restart:     ()         => ipcRenderer.invoke('kiosk:restart'),
     onState:  (cb) => {
       const handler = (_e, state) => cb(state);
