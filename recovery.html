@@ -309,8 +309,10 @@
     }
     // updates
     const u = a.updater || {}, us = a.updateStatus || null;
+    const lastRun = u.lastRun || (us && us.checkedAt);
+    const lastRes = (us && us.result) || (u.lastResult != null && u.source === 'scheduler' ? (u.lastResult === 0 ? 'ok' : 'code ' + u.lastResult) : null);
     $('auto-text').textContent = u.installed
-      ? 'Automatic updates: on (nightly at 03:15 and after boot' + (u.lastRun ? '; last run ' + new Date(u.lastRun).toLocaleString() + (us && us.result ? ', ' + us.result : '') : '') + ').'
+      ? 'Automatic updates: on (nightly at 03:15 and after boot' + (lastRun ? '; last check ' + new Date(lastRun).toLocaleString() + (lastRes ? ', ' + lastRes : '') : '; not run yet') + ').'
       : 'Automatic updates: off — turned on together with kiosk mode.';
   }
 

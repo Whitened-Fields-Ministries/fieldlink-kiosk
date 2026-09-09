@@ -55,6 +55,7 @@ $LogFile    = Join-Path $AdminDir 'admin.log'
 $ResultFile = Join-Path $AdminDir 'last-action.json'
 $UpdateCfg  = Join-Path $AdminDir 'update.json'
 $UpdateLog  = Join-Path $AdminDir 'update-status.json'
+$UpdaterMark = Join-Path $AdminDir 'updater.json'   # written when the task is (un)installed; readable by every account
 $ScriptCopy = Join-Path $AdminDir 'kiosk-admin.ps1'
 $TaskName   = 'FieldLinkKiosk Update'
 $WinLogon   = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
@@ -151,11 +152,20 @@ function Test-AutoLogonConfigured {
   try { $wl = Get-ItemProperty $WinLogon; return ($wl.AutoAdminLogon -eq '1' -and $wl.DefaultUserName -eq $KioskUser) } catch { return $false }
 }
 function Get-TaskInfo {
+  # Standard users (the kiosk account) cannot read a task that runs as SYSTEM,
+  # so Task Scheduler is only trusted when it answers; otherwise the marker
+  # file written at install/remove time says whether the task exists.
   try {
     $t = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     $i = $t | Get-ScheduledTaskInfo
-    return [ordered]@{ installed = $true; state = [string]$t.State; lastRun = $(if ($i.LastRunTime -and $i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToString('o') } else { $null }); lastResult = $i.LastTaskResult; nextRun = $(if ($i.NextRunTime) { $i.NextRunTime.ToString('o') } else { $null }) }
-  } catch { return [ordered]@{ installed = $false } }
+    return [ordered]@{ installed = $true; source = 'scheduler'; state = [string]$t.State; lastRun = $(if ($i.LastRunTime -and $i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToString('o') } else { $null }); lastResult = $i.LastTaskResult; nextRun = $(if ($i.NextRunTime) { $i.NextRunTime.ToString('o') } else { $null }) }
+  } catch {
+    if ($_.Exception.Message -match 'No MSFT_ScheduledTask') { return [ordered]@{ installed = $false; source = 'scheduler' } }
+    $m = Read-Json $UpdaterMark
+    $u = Read-Json $UpdateLog
+    if ($m -and $m.installed) { return [ordered]@{ installed = $true; source = 'marker'; state = 'Unknown (no permission to query)'; lastRun = $(if ($u) { $u.checkedAt } else { $null }); lastResult = $(if ($u) { $u.result } else { $null }); nextRun = $null; installedAt = $m.installedAt } }
+    return [ordered]@{ installed = $false; source = 'marker' }
+  }
 }
 
 # -- LSA secret for autologon (what Sysinternals Autologon does) --------------
@@ -364,11 +374,13 @@ function Install-Updater([string]$serverOrigin) {
   $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
   Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Description 'Installs newer FieldLink Kiosk builds from the FieldLink server (nightly and after boot).' -Force | Out-Null
+  [ordered]@{ installed = $true; taskName = $TaskName; installedAt = (Get-Date).ToString('o'); server = $serverOrigin } | ConvertTo-Json | Set-Content -Path $UpdaterMark -Encoding UTF8
   Step 'Automatic updates scheduled' 'ok' 'nightly at 03:15 and 3 min after boot, as SYSTEM'
 }
 
 function Remove-Updater {
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+  try { Ensure-AdminDir; [ordered]@{ installed = $false; removedAt = (Get-Date).ToString('o') } | ConvertTo-Json | Set-Content -Path $UpdaterMark -Encoding UTF8 } catch {}
   Step 'Automatic update task removed'
 }
 
