@@ -222,6 +222,7 @@
   let tick = null;
   let resultPoll = null;
   let actionRunning = null;  // action name while an elevated action is in flight
+  let restartOffered = false; // the restart confirm is shown once per finished action
 
   function fmtTime(ts) { return ts ? new Date(ts).toLocaleTimeString() : '—'; }
   function mmss(secs) { return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'); }
@@ -347,9 +348,12 @@
     } else {
       bar.classList.add('done');
       $('job-title').textContent = (labels[j.action] || j.action) + ' finished';
-      $('job-status').textContent = (r && r.message) || 'Done.';
+      $('job-status').textContent = (r && r.message) || (j.needsRestart
+        ? (j.action === 'Unlock' ? 'Kiosk mode removed. Restart to apply.' : 'Kiosk mode is set up. Restart to boot straight into the display.')
+        : 'Done.');
     }
     renderResult(r);
+    if (!j.running && j.needsRestart) $('restart-btn').classList.remove('hidden');
     $('job-log').textContent = (j.logTail || []).join('\n');
     $('job-log').scrollTop = $('job-log').scrollHeight;
   }
@@ -364,10 +368,16 @@
       renderJob(j);
       if (j && !j.running) {
         clearInterval(resultPoll); resultPoll = null; actionRunning = null; setBusy(false);
-        const r = j.result && !j.result.stale ? j.result : null;
         say('admin-msg', j.error ? j.error : '', j.error ? 'bad' : '');
         refreshAdmin();
         if (j.action === 'Update') refreshUpdate();
+        if (j.needsRestart && !restartOffered) {
+          restartOffered = true;
+          setTimeout(() => {
+            const what = j.action === 'Unlock' ? 'Kiosk mode has been removed.' : 'Kiosk mode is set up.';
+            if (window.confirm(what + '\n\nRestart this PC now to apply it? (You can also use the Restart now button later.)')) bridge.restart();
+          }, 300);
+        }
       }
     }, 1000);
   }
@@ -382,6 +392,7 @@
     $('restart-btn').classList.add('hidden');
     say('admin-msg', '');
     actionRunning = action;
+    restartOffered = false;
     renderJob({ action, running: true, elapsedMs: 0, logTail: [] });
     watchJob();
     const r = await bridge.adminRun(action);   // resolves when the elevated helper has exited

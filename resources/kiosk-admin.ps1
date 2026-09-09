@@ -141,6 +141,12 @@ function Get-ConfiguredServer {
   if ($c -and $c.kioskUrl) { try { return ([Uri]$c.kioskUrl).GetLeftPart([UriPartial]::Authority) } catch {} }
   return $null
 }
+function Test-ProfileExists {
+  # A non-elevated caller is denied inside another user's profile; the folder's
+  # existence alone is visible to everyone, so fall back to that.
+  try { return [bool](Test-Path -LiteralPath "$ProfilePath\NTUSER.DAT" -ErrorAction Stop) }
+  catch { return [System.IO.Directory]::Exists($ProfilePath) }
+}
 function Test-AutoLogonConfigured {
   try { $wl = Get-ItemProperty $WinLogon; return ($wl.AutoAdminLogon -eq '1' -and $wl.DefaultUserName -eq $KioskUser) } catch { return $false }
 }
@@ -238,7 +244,8 @@ function Ensure-DataDirs {
   # Admin folder: Administrators + SYSTEM full, everyone else read-only. The
   # updater runs as SYSTEM from here, so the kiosk account must not be able
   # to change anything in it.
-  $rc = Run-Native { icacls "$AdminDir" /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'Users:(OI)(CI)RX' }
+  # SIDs, not names: SYSTEM, Administrators full; Authenticated Users + Users read.
+  $rc = Run-Native { icacls "$AdminDir" /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-11:(OI)(CI)RX' '*S-1-5-32-545:(OI)(CI)RX' }
   if ($rc -ne 0) { throw "icacls on $AdminDir failed (exit $rc)" }
   Step 'Prepared data folders' 'ok' "$DataDir (kiosk may write), $AdminDir (admins only)"
 }
@@ -381,7 +388,7 @@ switch ($Action) {
       isAdmin         = Test-Admin
       accountExists   = [bool](Get-LocalUser -Name $KioskUser -ErrorAction SilentlyContinue)
       accountEnabled  = $(try { (Get-LocalUser -Name $KioskUser -ErrorAction Stop).Enabled } catch { $false })
-      profileExists   = (Test-Path "$ProfilePath\NTUSER.DAT")
+      profileExists   = (Test-ProfileExists)
       autoLogon       = Test-AutoLogonConfigured
       updater         = Get-TaskInfo
       updateStatus    = Read-Json $UpdateLog

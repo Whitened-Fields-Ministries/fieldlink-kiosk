@@ -577,15 +577,29 @@ async function adminStatus() {
   try { return JSON.parse(r.stdout.slice(i)); } catch (e) { return { error: 'Could not read status: ' + e.message }; }
 }
 
+// PowerShell's round-trip dates carry 7 fractional digits; trim to 3 for Date.parse.
+function parsePsDate(v) {
+  if (!v) return 0;
+  const t = Date.parse(String(v).replace(/(\.\d{3})\d+/, '$1'));
+  return Number.isNaN(t) ? 0 : t;
+}
+
+let _resultReadError = null;
 function readAdminResult() {
   const dir = adminDir();
   if (!dir) return null;
+  const file = path.join(dir, 'last-action.json');
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-action.json'), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\ufeff/, ''));
     // Results written before the current action started belong to an earlier run.
-    j.stale = adminActionStartedAt > 0 && (Date.parse(j.updatedAt || 0) || 0) < adminActionStartedAt - 5000;
+    j.stale = adminActionStartedAt > 0 && parsePsDate(j.updatedAt) < adminActionStartedAt - 5000;
+    _resultReadError = null;
     return j;
-  } catch { return null; }
+  } catch (e) {
+    const msg = e && e.code ? e.code : String(e && e.message || e);
+    if (_resultReadError !== msg) { _resultReadError = msg; log(`admin: cannot read ${file}: ${msg}`); }
+    return null;
+  }
 }
 
 let adminJob = null; // { action, startedAt, finishedAt, running, exitCode, logFile, error }
@@ -657,7 +671,12 @@ async function adminRunElevated(action) {
 
 function adminJobSnapshot() {
   if (!adminJob) return null;
-  return { ...adminJob, elapsedMs: (adminJob.finishedAt || Date.now()) - adminJob.startedAt, logTail: tailFile(adminJob.logFile, 14), result: readAdminResult() };
+  const result = readAdminResult();
+  const fresh = result && !result.stale ? result : null;
+  const finishedOk = !adminJob.running && adminJob.exitCode === 0 && !adminJob.error;
+  // Lockdown/Unlock always need a restart to take effect, whether or not the result file was readable.
+  const needsRestart = finishedOk && ((fresh && fresh.needsRestart) || ['Lockdown', 'Unlock'].includes(adminJob.action));
+  return { ...adminJob, elapsedMs: (adminJob.finishedAt || Date.now()) - adminJob.startedAt, logTail: tailFile(adminJob.logFile, 14), result, needsRestart, resultUnreadable: !result && !!_resultReadError };
 }
 
 function cmpVersion(a, b) {
