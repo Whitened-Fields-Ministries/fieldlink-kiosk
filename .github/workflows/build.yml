@@ -34,6 +34,25 @@ jobs:
           name: FieldLinkKiosk-installer
           path: dist/*.exe
 
+      # The installer name carries the version, so without this the "latest"
+      # release would accumulate one .exe per build and the FieldLink server
+      # (which serves the release's installer) could hand out an old one.
+      - name: Remove previous installers from the latest release
+        shell: pwsh
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $names = gh release view latest --repo $env:GITHUB_REPOSITORY --json assets -q '.assets[].name' 2>$null
+          if (-not $names) { Write-Host 'No existing latest release or no assets.'; exit 0 }
+          foreach ($n in $names) {
+            if ($n -like '*.exe' -or $n -like '*.blockmap' -or $n -like '*.yml') {
+              Write-Host "Deleting old asset $n"
+              gh release delete-asset latest $n --repo $env:GITHUB_REPOSITORY --yes
+            }
+          }
+
       - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
