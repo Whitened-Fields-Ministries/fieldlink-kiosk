@@ -35,7 +35,7 @@ That's the whole setup. Later, the same Ctrl+Shift+K screen shows status, instal
 
 ### Key health loop
 
-Every 30 s the app calls `GET /api/kiosk/whoami` with the key (falls back to `/hash` on old servers).
+Every 30 s the app calls `GET /api/kiosk/whoami` with the key.
 
 | Result | What the app does |
 |--------|-------------------|
@@ -52,9 +52,8 @@ shows the code and polls `GET /api/kiosk/pair/poll` (header `x-pair-token`) ever
 claimed the code via `POST /api/kiosk/keys/:id/pair-claim`, the poll returns the kiosk URL and the app saves it.
 Codes renew every 15 minutes by themselves.
 
-Fallback, **code from Admin typed on the display** (needs a keyboard): Admin → Link kiosk → *Generate a code*
-→ `POST /api/kiosk/pair` from the app. Pasting a full kiosk URL or key also works. Both live under
-"Have a code from FieldLink Admin, or a kiosk URL?" on the screen.
+Fallback: pasting a full kiosk URL or key under "Have a kiosk URL?" on the screen (for the rare case
+where the admin panel cannot be reached from a phone).
 
 ### Privileged helper (`resources/kiosk-admin.ps1`)
 
@@ -106,7 +105,6 @@ The most recently modified of these wins:
 | Path | Written by |
 |------|-----------|
 | `%ProgramData%\FieldLinkKiosk\config.json` | The app (pairing / pasted URL). Survives upgrades. |
-| `C:\Program Files\FieldLinkKiosk\config.json` | Old 1.0 setup packages. Still honoured. |
 | `%APPDATA%\fieldlink-kiosk\config.json` | Fallback when ProgramData is not writable. |
 | `./config.json` | Development only (`npm start`). |
 
@@ -142,8 +140,8 @@ GitHub release tagged **`latest`**, then `POST /api/kiosk/installer/invalidate` 
 cached copy is replaced immediately. Bump `version` in `package.json` with every behaviour change: the
 updater compares it, the screen shows it, and requests carry a `FieldLinkKiosk/<version>` user-agent suffix.
 
-Displays on 1.2+ in kiosk mode update themselves nightly, and anyone at the display can trigger it from the
-Updates panel. Displays on 1.0/1.1 must run the new installer once (safe over an existing install).
+Displays in kiosk mode update themselves nightly, and anyone at the display can trigger it from the
+Updates panel.
 Pushes that only touch `README.md` do not trigger a build.
 
 The installer is not code-signed yet, so SmartScreen shows "Windows protected your PC" on first run
@@ -155,7 +153,7 @@ once one exists it is a few lines in `build.yml` and the electron-builder `win` 
 The server half lives in the FieldLink repo:
 
 - `server/src/routes/kiosk.js` — key auth, `/whoami`, `/pair/request`, `/pair/poll`, `/keys/:id/pair-claim`,
-  `/pair`, `/keys/:id/pair-code`, rotate/disable, installer proxy with `/installer/version` (size, sha256).
+  rotate/disable, installer proxy with `/installer/version` (size, sha256).
 - `nginx/admin-app/src/pages/KioskSettings.jsx` — the admin page (Link kiosk, status, installer download).
 - `nginx/client/kiosk.html` — the page this app displays.
 - `nginx/docs/index.html` — the Kiosk chapter of the user documentation, including troubleshooting.
