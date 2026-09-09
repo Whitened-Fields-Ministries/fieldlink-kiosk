@@ -100,6 +100,15 @@ function Fail([string]$msg) {
   Write-Result -Ok $false -Message $msg
   exit 1
 }
+function Run-Native([scriptblock]$Command) {
+  # Native tools (icacls, net, powercfg, reg) print warnings to stderr; with
+  # $ErrorActionPreference = 'Stop' PowerShell 5.1 turns a redirected stderr
+  # line into a terminating error. Run them with 'Continue' and return exit code.
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { $out = & $Command 2>&1; $code = $LASTEXITCODE; if ($out) { Write-Log ("native: " + (($out | Out-String).Trim() -replace '\s+', ' ')) 'debug' } ; return $code }
+  finally { $ErrorActionPreference = $prev }
+}
 function Test-Admin {
   $p = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
   return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -219,19 +228,26 @@ function Ensure-KioskAccount {
   Enable-LocalUser -Name $KioskUser
   try { Remove-LocalGroupMember -Group 'Administrators' -Member $KioskUser -ErrorAction Stop; Step "Removed $KioskUser from Administrators" } catch {}
   if (-not (Get-LocalGroupMember -Group 'Users' -Member $KioskUser -ErrorAction SilentlyContinue)) { Add-LocalGroupMember -Group 'Users' -Member $KioskUser -ErrorAction SilentlyContinue }
-  & net user $KioskUser /logonpasswordchg:no 2>&1 | Out-Null
+  Run-Native { net user $KioskUser /logonpasswordchg:no } | Out-Null
   return $plain
 }
 
 function Ensure-DataDirs {
   New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
-  & icacls "$DataDir" /grant "${KioskUser}:(OI)(CI)M" /T 2>&1 | Out-Null
   Ensure-AdminDir
   # Admin folder: Administrators + SYSTEM full, everyone else read-only. The
   # updater runs as SYSTEM from here, so the kiosk account must not be able
   # to change anything in it.
-  & icacls "$AdminDir" /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'Users:(OI)(CI)RX' 2>&1 | Out-Null
+  $rc = Run-Native { icacls "$AdminDir" /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' 'Users:(OI)(CI)RX' }
+  if ($rc -ne 0) { throw "icacls on $AdminDir failed (exit $rc)" }
   Step 'Prepared data folders' 'ok' "$DataDir (kiosk may write), $AdminDir (admins only)"
+}
+
+# Called only once the kiosk account exists.
+function Grant-KioskDataAcl {
+  $rc = Run-Native { icacls "$DataDir" /grant "${KioskUser}:(OI)(CI)M" /T }
+  if ($rc -ne 0) { throw "icacls on $DataDir failed (exit $rc)" }
+  Step "Kiosk account may update $DataDir (for re-linking from the app)"
 }
 
 function Ensure-Profile {
@@ -304,20 +320,20 @@ function Clear-AutoLogon {
 
 function Set-PowerSettings([bool]$kiosk) {
   if ($kiosk) {
-    & powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>&1 | Out-Null
-    & powercfg /change monitor-timeout-ac 0 | Out-Null
-    & powercfg /change monitor-timeout-dc 0 | Out-Null
-    & powercfg /change standby-timeout-ac 0 | Out-Null
-    & powercfg /change standby-timeout-dc 0 | Out-Null
-    & powercfg /hibernate off 2>&1 | Out-Null
+    Run-Native { powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c } | Out-Null
+    Run-Native { powercfg /change monitor-timeout-ac 0 } | Out-Null
+    Run-Native { powercfg /change monitor-timeout-dc 0 } | Out-Null
+    Run-Native { powercfg /change standby-timeout-ac 0 } | Out-Null
+    Run-Native { powercfg /change standby-timeout-dc 0 } | Out-Null
+    Run-Native { powercfg /hibernate off } | Out-Null
     New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null
     Set-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Control Panel\Desktop' -Name 'ScreenSaveActive' -Value '0' -ErrorAction SilentlyContinue
-    & reg add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' /v SkipMachineOOBE /t REG_DWORD /d 1 /f 2>&1 | Out-Null
-    & reg add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' /v SkipUserOOBE    /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+    Run-Native { reg add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' /v SkipMachineOOBE /t REG_DWORD /d 1 /f } | Out-Null
+    Run-Native { reg add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' /v SkipUserOOBE    /t REG_DWORD /d 1 /f } | Out-Null
     Step 'Sleep, screen timeout and screensaver disabled'
   } else {
-    & powercfg /change monitor-timeout-ac 30 | Out-Null
-    & powercfg /change standby-timeout-ac 60 | Out-Null
+    Run-Native { powercfg /change monitor-timeout-ac 30 } | Out-Null
+    Run-Native { powercfg /change standby-timeout-ac 60 } | Out-Null
     Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Control Panel\Desktop' -Name 'ScreenSaveActive' -ErrorAction SilentlyContinue
     Step 'Power settings restored (30 min display, 60 min sleep)'
   }
@@ -354,6 +370,7 @@ function Write-UpdateStatus($obj) {
 }
 
 # -- actions ------------------------------------------------------------------
+try {
 switch ($Action) {
 
   'Status' {
@@ -389,7 +406,7 @@ switch ($Action) {
     Step 'Kiosk app found' 'ok' "$exe (v$(Get-ExeVersion $exe))"
     Ensure-DataDirs
     $password = Ensure-KioskAccount
-    & icacls "$DataDir" /grant "${KioskUser}:(OI)(CI)M" /T 2>&1 | Out-Null
+    Grant-KioskDataAcl
     Ensure-Profile
     Set-KioskShell -exePath $exe -lock $true
     Set-AutoLogon -password $password
@@ -495,7 +512,7 @@ switch ($Action) {
         # Scheduled run while the kiosk account was signed in: the app was its
         # shell, so the screen is black until the next sign-in. Restart.
         Write-Result -Ok $true -Message "Updated to FieldLinkKiosk $now - restarting." -NeedsRestart $true -Extra $status
-        & shutdown.exe /r /t 20 /c "FieldLink Kiosk was updated to $now" /d p:4:2 | Out-Null
+        Run-Native { shutdown.exe /r /t 20 /c "FieldLink Kiosk was updated to $now" /d p:4:2 } | Out-Null
       } else {
         Write-Result -Ok $true -Message "Updated to FieldLinkKiosk $now." -Extra $status
       }
@@ -508,4 +525,9 @@ switch ($Action) {
       exit 1
     }
   }
+}
+} catch {
+  $where = ''
+  try { $where = " (line $($_.InvocationInfo.ScriptLineNumber))" } catch {}
+  Fail ("$Action failed: " + $_.Exception.Message + $where)
 }

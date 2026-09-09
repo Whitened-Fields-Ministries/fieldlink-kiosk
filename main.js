@@ -598,7 +598,9 @@ function adminTempDir() {
 
 function tailFile(file, maxLines) {
   try {
-    const txt = fs.readFileSync(file, 'utf8').replace(/^\ufeff/, '').replace(/\r/g, '');
+    const buf = fs.readFileSync(file);
+    const utf16 = buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe;
+    const txt = (utf16 ? buf.toString('utf16le') : buf.toString('utf8')).replace(/\ufeff/g, '').replace(/\r/g, '');
     const lines = txt.split('\n').filter(l => l.trim().length);
     return lines.slice(-(maxLines || 12));
   } catch { return []; }
@@ -622,7 +624,7 @@ async function adminRunElevated(action) {
     "$ErrorActionPreference = 'Continue'",
     `$log = '${q(logFile)}'`,
     `"[$(Get-Date -Format 'HH:mm:ss')] helper starting: ${action}" | Out-File -FilePath $log -Encoding utf8`,
-    `& '${q(adminScriptPath())}' -Action ${action} -Exe '${q(app.getPath('exe'))}'${action === 'Update' ? ' -Relaunch' : ''} *>> $log`,
+    `& '${q(adminScriptPath())}' -Action ${action} -Exe '${q(app.getPath('exe'))}'${action === 'Update' ? ' -Relaunch' : ''} *>&1 | Out-File -FilePath $log -Append -Encoding utf8`,
     '$code = $LASTEXITCODE',
     'if ($null -eq $code) { $code = 0 }',
     `"[$(Get-Date -Format 'HH:mm:ss')] helper exit code $code" | Out-File -FilePath $log -Append -Encoding utf8`,
