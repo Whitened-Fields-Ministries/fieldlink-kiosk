@@ -69,6 +69,16 @@
   ol.progress li.warn::before { content: '!'; color: var(--warn); }
   ol.progress li.failed { color: var(--bad); } ol.progress li.failed::before { content: '✕'; color: var(--bad); }
   .small { font-size: 0.82rem; }
+  .job { margin-top: 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .job .head { display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; font-weight: 600; }
+  .bar { height: 8px; border-radius: 999px; background: #0b1220; overflow: hidden; margin: 10px 0 8px; position: relative; }
+  .bar .fill { position: absolute; inset: 0; width: 35%; border-radius: 999px; background: linear-gradient(90deg, transparent, var(--gold), transparent); animation: slide 1.4s ease-in-out infinite; }
+  .bar.done .fill { animation: none; width: 100%; background: var(--ok); }
+  .bar.failed .fill { animation: none; width: 100%; background: var(--bad); }
+  @keyframes slide { 0% { left: -35%; } 100% { left: 100%; } }
+  .joblog { font: 0.72rem/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); background: #070b14; border-radius: 8px; padding: 8px 10px; max-height: 150px; overflow: hidden; white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; user-select: text; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: rot 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes rot { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -179,7 +189,13 @@
         <button id="unlock-btn" class="danger hidden">Remove kiosk mode</button>
         <button id="restart-btn" class="hidden">Restart now</button>
       </div>
-      <ol id="admin-steps" class="progress"></ol>
+      <div id="job" class="job hidden">
+        <div class="head"><span id="job-title"><span class="spin"></span>Working…</span><span id="job-elapsed" class="countdown sub">0:00</span></div>
+        <div id="job-bar" class="bar"><div class="fill"></div></div>
+        <div id="job-status" class="small"></div>
+        <ol id="admin-steps" class="progress"></ol>
+        <pre id="job-log" class="joblog"></pre>
+      </div>
       <div id="admin-msg" class="msg"></div>
       <p class="small" id="admin-hint" style="margin-top:8px">Creates a <strong>FieldLinkKiosk</strong> Windows account (random password, managed for you) that boots straight into this app with no desktop, disables sleep, and turns on automatic updates. Windows asks for administrator permission once. Undo any time from here.</p>
     </div>
@@ -308,25 +324,52 @@
   function renderResult(r) {
     const list = $('admin-steps'); list.innerHTML = '';
     if (!r || r.stale) return;
-    (r.steps || []).forEach(s => { const li = document.createElement('li'); li.className = s.state || ''; li.textContent = s.label + (s.detail ? ' — ' + s.detail : ''); list.appendChild(li); });
-    const target = (r.action === 'Update') ? 'update-msg' : 'admin-msg';
-    say(target, r.message || '', r.running ? '' : (r.ok ? 'ok' : 'bad'));
+    (r.steps || []).forEach(st => { const li = document.createElement('li'); li.className = st.state || ''; li.textContent = st.label + (st.detail ? ' — ' + st.detail : ''); list.appendChild(li); });
     $('restart-btn').classList.toggle('hidden', !(r.ok && r.needsRestart && !r.running));
+  }
+
+  function renderJob(j) {
+    const box = $('job');
+    if (!j) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const secs = Math.max(0, Math.round((j.elapsedMs || 0) / 1000));
+    $('job-elapsed').textContent = mmss(secs);
+    const r = j.result && !j.result.stale ? j.result : null;
+    const bar = $('job-bar'); bar.className = 'bar';
+    const labels = { Lockdown: 'Setting up kiosk mode', Unlock: 'Removing kiosk mode', Update: 'Updating', InstallUpdater: 'Scheduling automatic updates', RemoveUpdater: 'Removing automatic updates' };
+    if (j.running) {
+      $('job-title').innerHTML = '<span class="spin"></span>' + (labels[j.action] || j.action) + '…';
+      $('job-status').textContent = r && r.message ? r.message : (j.logTail && j.logTail.length ? 'Running — Windows may be showing a permission prompt behind this window.' : 'Waiting for administrator permission (look for the Windows prompt)…');
+    } else if (j.error || (r && r.ok === false)) {
+      bar.classList.add('failed');
+      $('job-title').textContent = (labels[j.action] || j.action) + ' failed';
+      $('job-status').textContent = (r && r.message) || j.error || ('Exit code ' + j.exitCode);
+    } else {
+      bar.classList.add('done');
+      $('job-title').textContent = (labels[j.action] || j.action) + ' finished';
+      $('job-status').textContent = (r && r.message) || 'Done.';
+    }
+    renderResult(r);
+    $('job-log').textContent = (j.logTail || []).join('\n');
+    $('job-log').scrollTop = $('job-log').scrollHeight;
   }
 
   async function refreshAdmin() { if (!bridge) return; renderAdmin(await bridge.adminStatus()); }
   async function refreshUpdate() { if (!bridge) return; renderUpdate(await bridge.checkUpdate()); }
 
-  function watchResult(action) {
-    actionRunning = action;
+  function watchJob() {
     if (resultPoll) clearInterval(resultPoll);
-    let quiet = 0;
     resultPoll = setInterval(async () => {
-      const r = await bridge.adminResult();
-      if (!r || r.stale) { quiet++; if (quiet > 120) { clearInterval(resultPoll); setBusy(false); say('admin-msg', 'No response from the helper — was the administrator prompt accepted?', 'warn'); } return; }
-      renderResult(r);
-      if (!r.running) { clearInterval(resultPoll); resultPoll = null; actionRunning = null; setBusy(false); refreshAdmin(); if (action === 'Update') refreshUpdate(); }
-    }, 1500);
+      const j = await bridge.adminJob();
+      renderJob(j);
+      if (j && !j.running) {
+        clearInterval(resultPoll); resultPoll = null; actionRunning = null; setBusy(false);
+        const r = j.result && !j.result.stale ? j.result : null;
+        say('admin-msg', j.error ? j.error : '', j.error ? 'bad' : '');
+        refreshAdmin();
+        if (j.action === 'Update') refreshUpdate();
+      }
+    }, 1000);
   }
   function setBusy(b) { ['lock-btn', 'unlock-btn', 'install-btn', 'check-btn'].forEach(id => { $(id).disabled = b; }); }
 
@@ -335,11 +378,16 @@
     if (confirmText && !window.confirm(confirmText)) return;
     setBusy(true);
     $('admin-steps').innerHTML = '';
-    say(action === 'Update' ? 'update-msg' : 'admin-msg', 'Waiting for administrator permission…');
-    const r = await bridge.adminRun(action);
-    if (!r.ok) { setBusy(false); say(action === 'Update' ? 'update-msg' : 'admin-msg', r.error || 'Could not start.', 'bad'); return; }
-    say(action === 'Update' ? 'update-msg' : 'admin-msg', 'Working…');
-    watchResult(action);
+    $('job-log').textContent = '';
+    $('restart-btn').classList.add('hidden');
+    say('admin-msg', '');
+    actionRunning = action;
+    renderJob({ action, running: true, elapsedMs: 0, logTail: [] });
+    watchJob();
+    const r = await bridge.adminRun(action);   // resolves when the elevated helper has exited
+    const j = await bridge.adminJob();
+    renderJob(j);
+    if (!r.ok) say('admin-msg', r.error || 'That did not work.', 'bad');
   }
 
   // ── wiring ───────────────────────────────────────────────────────────────
@@ -405,7 +453,7 @@
     refreshAdmin();
     refreshUpdate();
     // An action may still be running from before this page was (re)opened.
-    bridge.adminResult().then(r => { if (r && !r.stale) { renderResult(r); if (r.running) watchResult(r.action); } });
+    bridge.adminJob().then(j => { if (j) { renderJob(j); if (j.running) { setBusy(true); watchJob(); } } });
   } else {
     // Opened outside the app (e.g. in a browser while developing).
     render({ reason: new URLSearchParams(location.search).get('reason') || 'no-config', hasConfig: false, defaultServer: 'https://fieldlinkmissions.com', configTargets: ['(not running inside the kiosk app)'], pair: { status: 'waiting', code: 'K7M-3PX', expiresAt: Date.now() + 14 * 60 * 1000, origin: 'https://fieldlinkmissions.com' } });

@@ -222,6 +222,7 @@ function stateForPage() {
     platform:      process.platform,
     adminActionStartedAt,
     updateState,
+    adminJob: adminJob ? { action: adminJob.action, running: adminJob.running, startedAt: adminJob.startedAt, exitCode: adminJob.exitCode, error: adminJob.error } : null,
   };
 }
 
@@ -587,22 +588,74 @@ function readAdminResult() {
   } catch { return null; }
 }
 
+let adminJob = null; // { action, startedAt, finishedAt, running, exitCode, logFile, error }
+
+function adminTempDir() {
+  const d = path.join(app.getPath('temp'), 'FieldLinkKiosk-admin');
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+
+function tailFile(file, maxLines) {
+  try {
+    const txt = fs.readFileSync(file, 'utf8').replace(/^\ufeff/, '').replace(/\r/g, '');
+    const lines = txt.split('\n').filter(l => l.trim().length);
+    return lines.slice(-(maxLines || 12));
+  } catch { return []; }
+}
+
+// Runs kiosk-admin.ps1 elevated (one UAC prompt) and WAITS for it, so we know
+// exactly when it finished and how. Everything the helper prints goes to a
+// log file in this user's temp folder that the screen tails live.
 async function adminRunElevated(action) {
   const allowed = ['Lockdown', 'Unlock', 'Update', 'InstallUpdater', 'RemoveUpdater'];
   if (!allowed.includes(action)) return { ok: false, error: 'Unknown action.' };
   if (process.platform !== 'win32') return { ok: false, error: 'Kiosk mode is only available on Windows.' };
-  const q = v => `"${String(v).replace(/"/g, '""')}"`;
-  const inner = `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ${q(adminScriptPath())} -Action ${action} -Exe ${q(app.getPath('exe'))}${action === 'Update' ? ' -Relaunch' : ''}`;
-  const cmd = `Start-Process -FilePath '${psExe()}' -Verb RunAs -WindowStyle Hidden -ArgumentList '${inner.replace(/'/g, "''")}'`;
+  if (adminJob && adminJob.running) return { ok: false, error: `${adminJob.action} is still running.` };
+
+  const dir = adminTempDir();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const logFile = path.join(dir, `${action}-${stamp}.log`);
+  const runner  = path.join(dir, `run-${action}.ps1`);
+  const q = v => String(v).replace(/'/g, "''");
+  const ps1 = [
+    "$ErrorActionPreference = 'Continue'",
+    `$log = '${q(logFile)}'`,
+    `"[$(Get-Date -Format 'HH:mm:ss')] helper starting: ${action}" | Out-File -FilePath $log -Encoding utf8`,
+    `& '${q(adminScriptPath())}' -Action ${action} -Exe '${q(app.getPath('exe'))}'${action === 'Update' ? ' -Relaunch' : ''} *>> $log`,
+    '$code = $LASTEXITCODE',
+    'if ($null -eq $code) { $code = 0 }',
+    `"[$(Get-Date -Format 'HH:mm:ss')] helper exit code $code" | Out-File -FilePath $log -Append -Encoding utf8`,
+    'exit $code',
+    '',
+  ].join('\r\n');
+  fs.writeFileSync(runner, '\ufeff' + ps1, 'utf8');
+
   adminActionStartedAt = Date.now();
-  log(`admin: ${action} requested (UAC prompt)`);
-  const r = await runPs(['-Command', cmd], 120000);
-  if (r.code !== 0) {
+  adminJob = { action, startedAt: adminActionStartedAt, finishedAt: null, running: true, exitCode: null, logFile, error: null };
+  log(`admin: ${action} requested (UAC prompt) — log ${logFile}`);
+  pushState();
+
+  const cmd = `$p = Start-Process -FilePath '${q(psExe())}' -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${q(runner)}"'; exit $p.ExitCode`;
+  const r = await runPs(['-Command', cmd], 15 * 60 * 1000);
+  adminJob.running = false;
+  adminJob.finishedAt = Date.now();
+  adminJob.exitCode = r.code;
+  if (r.code !== 0 && !fs.existsSync(logFile)) {
+    // Never got as far as running: UAC declined or Start-Process failed.
     const declined = /cancel/i.test(r.stderr) || /1223/.test(r.stderr);
-    log(`admin: ${action} not started: ${r.stderr.trim().slice(0, 300)}`);
-    return { ok: false, error: declined ? 'Administrator permission was declined.' : (r.stderr.trim().slice(0, 300) || 'Could not start the helper.') };
+    adminJob.error = declined ? 'Administrator permission was declined.' : (r.stderr.trim().slice(0, 300) || 'Could not start the helper.');
+  } else if (r.code !== 0) {
+    adminJob.error = `The helper exited with code ${r.code}.`;
   }
-  return { ok: true, startedAt: adminActionStartedAt };
+  log(`admin: ${action} finished exit=${r.code}${adminJob.error ? ' — ' + adminJob.error : ''}`);
+  pushState();
+  return { ok: !adminJob.error, error: adminJob.error, exitCode: r.code, startedAt: adminActionStartedAt };
+}
+
+function adminJobSnapshot() {
+  if (!adminJob) return null;
+  return { ...adminJob, elapsedMs: (adminJob.finishedAt || Date.now()) - adminJob.startedAt, logTail: tailFile(adminJob.logFile, 14), result: readAdminResult() };
 }
 
 function cmpVersion(a, b) {
@@ -719,6 +772,7 @@ ipcMain.handle('kiosk:pair-request', async (_e, { server } = {}) => { await star
 ipcMain.handle('kiosk:admin-status', () => adminStatus());
 ipcMain.handle('kiosk:admin-run', (_e, { action } = {}) => adminRunElevated(action));
 ipcMain.handle('kiosk:admin-result', () => readAdminResult());
+ipcMain.handle('kiosk:admin-job', () => adminJobSnapshot());
 ipcMain.handle('kiosk:check-update', () => checkUpdate());
 ipcMain.handle('kiosk:restart', () => {
   if (process.platform !== 'win32') return { ok: false, error: 'Windows only.' };
