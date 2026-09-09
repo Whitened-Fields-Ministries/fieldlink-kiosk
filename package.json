@@ -1,8 +1,13 @@
 {
   "name": "fieldlink-kiosk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Field Link Missions Kiosk Display",
   "author": "Field Link Missions",
+  "homepage": "https://fieldlinkmissions.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Whitened-Fields-Ministries/fieldlink-kiosk.git"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -15,6 +20,7 @@
   "build": {
     "appId": "com.fieldlinkmissions.kiosk",
     "productName": "FieldLinkKiosk",
+    "artifactName": "FieldLinkKiosk-Setup-${version}.${ext}",
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "executableName": "FieldLinkKiosk"
@@ -27,10 +33,11 @@
       "createDesktopShortcut": false,
       "createStartMenuShortcut": false,
       "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false,
       "installerIcon": null,
       "uninstallerIcon": null
     },
-    "files": ["main.js"],
+    "files": ["main.js", "preload.js", "recovery.html"],
     "asar": true
   }
 }
