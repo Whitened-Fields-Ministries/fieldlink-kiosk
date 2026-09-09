@@ -19,6 +19,14 @@ if (window.location.protocol === 'file:') {
     retry:    ()            => ipcRenderer.invoke('kiosk:retry'),
     back:     ()            => ipcRenderer.invoke('kiosk:back'),
     quit:     ()            => ipcRenderer.invoke('kiosk:quit'),
+    // Kiosk-displayed pairing code (admin types it into FieldLink Admin)
+    pairRequest: (server)   => ipcRenderer.invoke('kiosk:pair-request', { server }),
+    // Privileged helper (resources/kiosk-admin.ps1) — UAC prompt on the PC
+    adminStatus: ()         => ipcRenderer.invoke('kiosk:admin-status'),
+    adminRun:    (action)   => ipcRenderer.invoke('kiosk:admin-run', { action }),
+    adminResult: ()         => ipcRenderer.invoke('kiosk:admin-result'),
+    checkUpdate: ()         => ipcRenderer.invoke('kiosk:check-update'),
+    restart:     ()         => ipcRenderer.invoke('kiosk:restart'),
     onState:  (cb) => {
       const handler = (_e, state) => cb(state);
       ipcRenderer.on('kiosk:state', handler);

@@ -1,6 +1,6 @@
 {
   "name": "fieldlink-kiosk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Field Link Missions Kiosk Display",
   "author": "Field Link Missions",
   "homepage": "https://fieldlinkmissions.com",
@@ -22,7 +22,14 @@
     "productName": "FieldLinkKiosk",
     "artifactName": "FieldLinkKiosk-Setup-${version}.${ext}",
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "executableName": "FieldLinkKiosk"
     },
     "nsis": {
@@ -32,12 +39,23 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": false,
-      "runAfterFinish": false,
+      "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "installerIcon": null,
-      "uninstallerIcon": null
+      "uninstallerIcon": null,
+      "include": "build/installer.nsh"
     },
-    "files": ["main.js", "preload.js", "recovery.html"],
-    "asar": true
+    "files": [
+      "main.js",
+      "preload.js",
+      "recovery.html"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "resources/kiosk-admin.ps1",
+        "to": "kiosk-admin.ps1"
+      }
+    ]
   }
 }
