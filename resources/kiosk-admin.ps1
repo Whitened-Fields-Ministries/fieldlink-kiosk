@@ -1,18 +1,18 @@
-# FieldLink Kiosk — privileged helper.
+﻿# FieldLink Kiosk - privileged helper.
 #
 # The kiosk app (main.js) runs this script for everything that needs
 # administrator rights, so church staff never see or run a script themselves:
 #
 #   -Action Status          read-only summary as JSON (no elevation needed)
 #   -Action Lockdown        turn this PC into a dedicated kiosk:
-#                             • FieldLinkKiosk local account, random password,
+#                             * FieldLinkKiosk local account, random password,
 #                               not an administrator, cannot change password
-#                             • that account's shell = FieldLinkKiosk.exe
+#                             * that account's shell = FieldLinkKiosk.exe
 #                               (no desktop, no taskbar, no Task Manager)
-#                             • auto-login on boot — password kept in the LSA
+#                             * auto-login on boot - password kept in the LSA
 #                               "DefaultPassword" secret, never in the registry
-#                             • no sleep / screen timeout
-#                             • nightly self-update task (see -Action Update)
+#                             * no sleep / screen timeout
+#                             * nightly self-update task (see -Action Update)
 #   -Action Unlock          undo all of the above (account is disabled, not deleted)
 #   -Action Update          used by the scheduled task and by the app's
 #                           "Install update" button: download a newer installer
@@ -26,9 +26,9 @@
 # screen reads to show progress and results.
 #
 # Two data folders, on purpose:
-#   %ProgramData%\FieldLinkKiosk        config.json — writable by the kiosk account
+#   %ProgramData%\FieldLinkKiosk        config.json - writable by the kiosk account
 #                                       (so it can re-link itself from the app)
-#   %ProgramData%\FieldLinkKiosk-Admin  this script, update settings, logs —
+#   %ProgramData%\FieldLinkKiosk-Admin  this script, update settings, logs -
 #                                       Administrators/SYSTEM only. The updater
 #                                       runs as SYSTEM and must never execute or
 #                                       trust anything the kiosk account can edit.
@@ -60,7 +60,7 @@ $TaskName   = 'FieldLinkKiosk Update'
 $WinLogon   = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 $ProfilePath = "$env:SystemDrive\Users\$KioskUser"
 
-# ── plumbing ─────────────────────────────────────────────────────────────────
+# -- plumbing -----------------------------------------------------------------
 $script:Steps = New-Object System.Collections.ArrayList
 function Ensure-AdminDir {
   if (-not (Test-Path $AdminDir)) { New-Item -ItemType Directory -Path $AdminDir -Force | Out-Null }
@@ -143,7 +143,7 @@ function Get-TaskInfo {
   } catch { return [ordered]@{ installed = $false } }
 }
 
-# ── LSA secret for autologon (what Sysinternals Autologon does) ──────────────
+# -- LSA secret for autologon (what Sysinternals Autologon does) --------------
 function Ensure-LsaType {
   if (([System.Management.Automation.PSTypeName]'FieldLink.LsaSecret').Type) { return }
   Add-Type -TypeDefinition @'
@@ -203,7 +203,7 @@ function New-RandomPassword {
   return -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
 }
 
-# ── building blocks ──────────────────────────────────────────────────────────
+# -- building blocks ----------------------------------------------------------
 function Ensure-KioskAccount {
   $secure = ConvertTo-SecureString (New-RandomPassword) -AsPlainText -Force
   $plain  = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($secure))
@@ -211,7 +211,7 @@ function Ensure-KioskAccount {
     New-LocalUser -Name $KioskUser -Password $secure -FullName 'Field Link Kiosk' -Description 'Dedicated FieldLink display account (managed by the FieldLink Kiosk app)' -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
     Step "Created local account $KioskUser"
   } else {
-    # A fresh random password every time — this is also how a broken/blank
+    # A fresh random password every time - this is also how a broken/blank
     # autologon from an older setup gets repaired.
     Set-LocalUser -Name $KioskUser -Password $secure -PasswordNeverExpires $true -UserMayChangePassword $false -AccountNeverExpires
     Step "Reset password on existing account $KioskUser"
@@ -289,7 +289,7 @@ function Set-AutoLogon([string]$password) {
   # Never leave a plain-text password or a login counter behind, and never
   # force the login (admins must be able to sign out and switch user).
   foreach ($n in 'DefaultPassword', 'AutoLogonCount', 'ForceAutoLogon') { Remove-ItemProperty $WinLogon -Name $n -ErrorAction SilentlyContinue }
-  # Blank passwords are no longer needed — restore the Windows default.
+  # Blank passwords are no longer needed - restore the Windows default.
   Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LimitBlankPasswordUse' -Value 1 -Type DWord -ErrorAction SilentlyContinue
   Step 'Auto-login on boot configured' 'ok' 'password stored in the LSA secret, not the registry'
 }
@@ -353,7 +353,7 @@ function Write-UpdateStatus($obj) {
   try { Ensure-AdminDir; $obj | ConvertTo-Json -Depth 4 | Set-Content -Path $UpdateLog -Encoding UTF8 } catch {}
 }
 
-# ── actions ──────────────────────────────────────────────────────────────────
+# -- actions ------------------------------------------------------------------
 switch ($Action) {
 
   'Status' {
@@ -383,7 +383,7 @@ switch ($Action) {
 
   'Lockdown' {
     Require-Admin
-    Write-Result -Ok $true -Message 'Starting…' -Running $true
+    Write-Result -Ok $true -Message 'Starting...' -Running $true
     $exe = Find-Exe
     if (-not $exe) { Fail 'FieldLinkKiosk.exe was not found. Install the kiosk app first.' }
     Step 'Kiosk app found' 'ok' "$exe (v$(Get-ExeVersion $exe))"
@@ -398,7 +398,7 @@ switch ($Action) {
     try { Install-Updater -serverOrigin (Get-ConfiguredServer) } catch { Write-Log "Updater not installed: $_" 'warn'; Step 'Automatic updates could not be scheduled' 'warn' "$_" }
     # verify
     $ok = (Test-AutoLogonConfigured) -and (Test-Path "$ProfilePath\NTUSER.DAT") -and (Get-LocalUser -Name $KioskUser).Enabled
-    if (-not $ok) { Fail 'Verification failed — see admin.log' }
+    if (-not $ok) { Fail 'Verification failed - see admin.log' }
     Step 'Verified' 'ok' 'account, profile and auto-login all in place'
     Write-Result -Ok $true -Message "Kiosk mode is set up. Restart to boot straight into the display." -NeedsRestart $true
     exit 0
@@ -406,7 +406,7 @@ switch ($Action) {
 
   'Unlock' {
     Require-Admin
-    Write-Result -Ok $true -Message 'Starting…' -Running $true
+    Write-Result -Ok $true -Message 'Starting...' -Running $true
     Clear-AutoLogon
     Set-KioskShell -exePath '' -lock $false
     Set-PowerSettings -kiosk $false
@@ -418,7 +418,7 @@ switch ($Action) {
 
   'InstallUpdater' {
     Require-Admin
-    Write-Result -Ok $true -Message 'Starting…' -Running $true
+    Write-Result -Ok $true -Message 'Starting...' -Running $true
     Install-Updater -serverOrigin (Get-ConfiguredServer)
     Write-Result -Ok $true -Message 'Automatic updates are on.'
     exit 0
@@ -426,7 +426,7 @@ switch ($Action) {
 
   'RemoveUpdater' {
     Require-Admin
-    Write-Result -Ok $true -Message 'Starting…' -Running $true
+    Write-Result -Ok $true -Message 'Starting...' -Running $true
     Remove-Updater
     Write-Result -Ok $true -Message 'Automatic updates are off.'
     exit 0
@@ -461,18 +461,18 @@ switch ($Action) {
       Get-ChildItem $dlDir -Filter '*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
       $file = Join-Path $dlDir "FieldLinkKiosk-Setup-$latest.exe"
       Write-Log "Downloading $latest from $origin/api/kiosk/installer"
-      Write-Result -Ok $true -Message "Downloading FieldLinkKiosk $latest…" -Running $true
+      Write-Result -Ok $true -Message "Downloading FieldLinkKiosk $latest..." -Running $true
       Invoke-WebRequest -Uri "$origin/api/kiosk/installer" -OutFile $file -TimeoutSec 900 -UseBasicParsing -Headers @{ 'User-Agent' = "FieldLinkKiosk-Updater/$installed" }
       $len = (Get-Item $file).Length
       if ($info.size -and [int64]$info.size -ne $len) { throw "Download size mismatch (got $len, expected $($info.size))." }
       if ($info.sha256) {
         $hash = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLower()
-        if ($hash -ne ([string]$info.sha256).ToLower()) { throw 'Download checksum mismatch — not installing.' }
+        if ($hash -ne ([string]$info.sha256).ToLower()) { throw 'Download checksum mismatch - not installing.' }
       }
       $sig = Get-AuthenticodeSignature -FilePath $file
       Write-Log "Installer signature: $($sig.Status)"
       $wasRunning = [bool](Get-Process -Name 'FieldLinkKiosk' -ErrorAction SilentlyContinue)
-      Write-Result -Ok $true -Message "Installing FieldLinkKiosk $latest…" -Running $true
+      Write-Result -Ok $true -Message "Installing FieldLinkKiosk $latest..." -Running $true
       Get-Process -Name 'FieldLinkKiosk' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
       Start-Sleep -Seconds 2
       $p = Start-Process -FilePath $file -ArgumentList '/S' -Wait -PassThru
@@ -494,7 +494,7 @@ switch ($Action) {
       } elseif ($wasRunning) {
         # Scheduled run while the kiosk account was signed in: the app was its
         # shell, so the screen is black until the next sign-in. Restart.
-        Write-Result -Ok $true -Message "Updated to FieldLinkKiosk $now — restarting." -NeedsRestart $true -Extra $status
+        Write-Result -Ok $true -Message "Updated to FieldLinkKiosk $now - restarting." -NeedsRestart $true -Extra $status
         & shutdown.exe /r /t 20 /c "FieldLink Kiosk was updated to $now" /d p:4:2 | Out-Null
       } else {
         Write-Result -Ok $true -Message "Updated to FieldLinkKiosk $now." -Extra $status
