@@ -14,7 +14,6 @@ contextBridge.exposeInMainWorld('fieldlinkKioskApp', Object.freeze({
 if (window.location.protocol === 'file:') {
   contextBridge.exposeInMainWorld('kiosk', {
     getState: ()            => ipcRenderer.invoke('kiosk:get-state'),
-    pair:     (code, server) => ipcRenderer.invoke('kiosk:pair', { code, server }),
     setUrl:   (text, server) => ipcRenderer.invoke('kiosk:set-url', { text, server }),
     retry:    ()            => ipcRenderer.invoke('kiosk:retry'),
     back:     ()            => ipcRenderer.invoke('kiosk:back'),

@@ -6,13 +6,12 @@
 //     survive the network being down at boot, recover from maintenance pages.
 //   • Notice when the key has been deleted/disabled on the server and show a
 //     recovery screen instead of a stale or broken page.
-//   • Let an admin re-link the display without touching files: type a pairing
-//     code from FieldLink Admin (or paste the kiosk URL) on the recovery screen.
+//   • Let an admin re-link the display without touching files: the screen shows
+//     a code that is typed into FieldLink Admin (or a kiosk URL can be pasted).
 //
 // Config resolution — the most recently modified of these wins:
-//   %ProgramData%\FieldLinkKiosk\config.json   written by INSTALL.bat and by the
-//                                              recovery screen; survives upgrades
-//   <folder of FieldLinkKiosk.exe>\config.json  legacy location (INSTALL.bat <= 1.0)
+//   %ProgramData%\FieldLinkKiosk\config.json   written by the setup screen (pairing);
+//                                              survives upgrades
 //   %APPDATA%\<app>\config.json                 fallback when ProgramData is read-only
 //   ./config.json                               development only (npm start)
 //
@@ -33,7 +32,6 @@ const HEALTH_INTERVAL_MS = 30 * 1000;          // steady-state key/server check
 const RETRY_STEPS_MS     = [5000, 10000, 20000, 30000]; // backoff while offline
 const REQUEST_TIMEOUT_MS = 15 * 1000;
 const KEY_RE             = /^fl_kiosk_[0-9a-f]{16,}$/i;
-const CODE_RE            = /^[A-Z0-9]{8}$/;    // pairing code, dashes/spaces stripped
 
 // Videos in missionary updates should play without a click on a lobby TV.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -66,7 +64,6 @@ function configCandidates() {
   const list = [];
   const pd = programDataConfigPath();
   if (pd) list.push(pd);
-  list.push(path.join(path.dirname(app.getPath('exe')), 'config.json'));
   list.push(path.join(app.getPath('userData'), 'config.json'));
   if (!app.isPackaged) list.push(path.join(__dirname, 'config.json'));
   return [...new Set(list)];
@@ -173,9 +170,7 @@ async function checkKey(kioskUrl) {
   if (!parsed || !parsed.key) return { status: 'invalid', error: 'no key in URL' };
   const headers = { 'x-kiosk-key': parsed.key };
   try {
-    let r = await fetchJson(`${parsed.origin}/api/kiosk/whoami`, { headers });
-    // Older servers do not have /whoami; /hash has existed for a long time.
-    if (r.status === 404) r = await fetchJson(`${parsed.origin}/api/kiosk/hash`, { headers });
+    const r = await fetchJson(`${parsed.origin}/api/kiosk/whoami`, { headers });
     if (r.ok) return { status: 'ok', http: r.status, info: r.body || {} };
     if (r.status === 401 || r.status === 403) return { status: 'invalid', http: r.status, error: (r.body && r.body.error) || `HTTP ${r.status}` };
     return { status: 'server', http: r.status, error: (r.body && r.body.error) || `HTTP ${r.status}` };
@@ -388,39 +383,6 @@ function onConfigChanged() {
 
 // ── IPC from recovery.html ───────────────────────────────────────────────────
 ipcMain.handle('kiosk:get-state', () => stateForPage());
-
-ipcMain.handle('kiosk:pair', async (_e, { code, server } = {}) => {
-  try {
-    const clean = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!CODE_RE.test(clean)) return { ok: false, error: 'Enter the 8-character code exactly as shown in FieldLink Admin.' };
-    const current = kioskUrl ? parseKioskUrl(kioskUrl) : null;
-    const origin = normaliseOrigin(server || (current && current.origin) || DEFAULT_SERVER);
-    log(`pair: trying code ${clean.slice(0, 2)}…… against ${origin}`);
-    const r = await fetchJson(`${origin}/api/kiosk/pair`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: clean, hostname: os.hostname(), app_version: APP_VERSION }),
-    });
-    if (!r.ok) {
-      const msg = (r.body && r.body.error) || (r.status === 404 ? 'This FieldLink server does not support pairing codes yet.' : `Server answered HTTP ${r.status}.`);
-      log(`pair: failed ${r.status} ${msg}`);
-      return { ok: false, error: msg };
-    }
-    const url = r.body && r.body.url;
-    const parsed = url ? parseKioskUrl(url) : null;
-    if (!parsed || !parsed.key) return { ok: false, error: 'The server did not return a kiosk URL.' };
-    const saved = saveConfig({ kioskUrl: parsed.url });
-    keyInfo = r.body.key || null;
-    kioskUrl = parsed.url; configSource = saved; invalidStreak = 0;
-    log(`pair: linked as "${(r.body.key && r.body.key.name) || '?'}" — saved to ${saved}`);
-    showKiosk();
-    scheduleCheck(5000);
-    return { ok: true, name: r.body.key && r.body.key.name, saved };
-  } catch (e) {
-    log(`pair: error ${e && e.message}`);
-    return { ok: false, error: e && e.message ? e.message : 'Could not reach the server.' };
-  }
-});
 
 ipcMain.handle('kiosk:set-url', async (_e, { text, server } = {}) => {
   try {
