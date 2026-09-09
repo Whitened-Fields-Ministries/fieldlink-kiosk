@@ -39,7 +39,6 @@
   label { display: block; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
   input[type=text] { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: #0b1220; color: var(--text); font: inherit; outline: none; user-select: text; }
   input[type=text]:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
-  input.code { font: 700 1.7rem/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.16em; text-align: center; text-transform: uppercase; }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
   button { font: inherit; font-weight: 600; padding: 11px 18px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); cursor: pointer; }
   button.primary { background: var(--gold); color: #1a1405; border-color: var(--gold); }
@@ -137,15 +136,7 @@
     <div id="pair-msg" class="msg"></div>
 
     <details id="alt">
-      <summary>Have a code from FieldLink Admin, or a kiosk URL?</summary>
-      <div class="field">
-        <label for="code">Code generated in FieldLink Admin (type it here)</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="code" class="code" type="text" maxlength="9" placeholder="ABCD-EFGH" autocomplete="off" spellcheck="false" style="flex:1">
-          <button id="pair-btn" class="primary">Link</button>
-        </div>
-        <div id="code-msg" class="msg"></div>
-      </div>
+      <summary>Have a kiosk URL?</summary>
       <div class="field">
         <label for="url">Kiosk URL or key (from ⚙ Settings → Copy URL)</label>
         <div style="display:flex;gap:8px;align-items:center">
@@ -403,29 +394,11 @@
     if (!r.ok) say('admin-msg', r.error || 'That did not work.', 'bad');
   }
 
-  // ── wiring ───────────────────────────────────────────────────────────────
-  $('code').addEventListener('input', e => {
-    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-    e.target.value = raw.length > 4 ? raw.slice(0, 4) + '-' + raw.slice(4) : raw;
-  });
-  $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('pair-btn').click(); });
   $('url').addEventListener('keydown', e => { if (e.key === 'Enter') $('url-btn').click(); });
   $('server').addEventListener('keydown', e => { if (e.key === 'Enter') $('server-btn').click(); });
 
   $('pair-new').addEventListener('click', async () => { if (bridge) render(await bridge.pairRequest($('server').value)); });
   $('server-btn').addEventListener('click', async () => { if (bridge) render(await bridge.pairRequest($('server').value)); });
-
-  $('pair-btn').addEventListener('click', async () => {
-    if (!bridge) return;
-    const code = $('code').value;
-    if (code.replace(/[^A-Z0-9]/gi, '').length !== 8) { say('code-msg', 'Type all 8 characters of the code.', 'warn'); $('code').focus(); return; }
-    $('pair-btn').disabled = true; say('code-msg', 'Checking code with the server…');
-    try {
-      const r = await bridge.pair(code, $('server').value);
-      if (r.ok) say('code-msg', 'Linked as "' + (r.name || 'kiosk') + '" — loading the map…', 'ok');
-      else { say('code-msg', r.error || 'That did not work.', 'bad'); $('code').select(); }
-    } finally { $('pair-btn').disabled = false; }
-  });
 
   $('url-btn').addEventListener('click', async () => {
     if (!bridge) return;
