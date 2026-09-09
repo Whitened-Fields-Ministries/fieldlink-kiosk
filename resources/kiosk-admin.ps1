@@ -217,7 +217,7 @@ function Ensure-KioskAccount {
   $secure = ConvertTo-SecureString (New-RandomPassword) -AsPlainText -Force
   $plain  = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($secure))
   if (-not (Get-LocalUser -Name $KioskUser -ErrorAction SilentlyContinue)) {
-    New-LocalUser -Name $KioskUser -Password $secure -FullName 'Field Link Kiosk' -Description 'Dedicated FieldLink display account (managed by the FieldLink Kiosk app)' -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
+    New-LocalUser -Name $KioskUser -Password $secure -FullName 'Field Link Kiosk' -Description 'FieldLink kiosk display (managed by the app)' -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
     Step "Created local account $KioskUser"
   } else {
     # A fresh random password every time - this is also how a broken/blank
